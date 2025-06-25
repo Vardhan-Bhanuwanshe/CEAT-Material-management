@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Material Barcode Scanner</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Material Scanner</h1>
+            <p>Select material and scan barcode for verification</p>
+        </div>
+        
+        <!-- Global error container -->
+        <div id="error-container" class="error-container" aria-live="polite"></div>
+        
+        <div class="content">
+            <div class="section" id="material-section">
+                <h2>📦 Material Selection</h2>
+                <label for="material-select">Select Material:</label>
+                <select id="material-select" required aria-describedby="material-help">
+                    <option value="">-- Select Material --</option>
+                    <!-- Options will be populated by JavaScript -->
+                </select>
+                <div id="material-help" class="help-text">Choose a material to begin scanning</div>                <div id="expected-barcode" style="display:none;">
+                    Expected Barcode: <span id="expected-code"></span>
+                </div>
+                
+                <!-- Material Management Controls -->
+                <div class="material-management">
+                    <h3>📝 Material Management</h3>
+                    <div class="material-controls">
+                        <div class="input-row">
+                            <input 
+                                id="add-material-name" 
+                                type="text" 
+                                placeholder="Material Name" 
+                                maxlength="50"
+                                required
+                            >
+                            <input 
+                                id="add-material-barcode" 
+                                type="text" 
+                                placeholder="Barcode" 
+                                pattern="[a-zA-Z0-9]{3,20}"
+                                maxlength="20"
+                                required
+                            >
+                        </div>
+                        <div class="button-row">
+                            <button id="add-material-btn" type="button" class="add-btn">
+                                ➕ Add Material
+                            </button>
+                            <button id="delete-material-btn" type="button" class="delete-btn">
+                                🗑️ Delete Selected
+                            </button>
+                        </div>
+                        <div id="material-validation" class="validation-message" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="scan-section" style="display:none;">
+                <h2>📱 Barcode Scanner</h2>
+                <label for="barcode-input">Scan Barcode:</label>
+                <input 
+                    id="barcode-input" 
+                    name="barcode" 
+                    inputmode="text" 
+                    pattern="[a-zA-Z0-9]{3,20}" 
+                    autocomplete="off" 
+                    placeholder="Enter or scan barcode..." 
+                    required
+                    minlength="3"
+                    maxlength="20"
+                    aria-describedby="barcode-help validation-errors"
+                />
+                <div id="barcode-help" class="help-text">Enter letters and numbers only (3-20 characters)</div>
+                <div id="validation-errors" class="validation-errors" style="display:none;" role="alert"></div>
+                <button id="scan-btn" type="button" aria-describedby="scan-help">🔍 Scan</button>
+                <div id="scan-help" class="help-text">Click to verify the barcode or press Enter</div>
+            </div>
+
+            <div id="result" aria-live="polite" role="status"></div>
+
+            <div class="section">
+                <h2>📋 Scan History</h2>
+
+                <!-- Enhanced History Controls -->
+                <div class="history-controls">
+                    <div class="controls-row buttons-row">
+                        <button id="clear-history" type="button">🗑️ Clear History</button>
+                        <button id="export-excel" type="button">📈 Export Excel</button>
+                        <button id="analyze-history" type="button">📊 Analyze</button>
+                    </div>
+                </div>
+
+                <!-- Analytics Panel -->
+                <div id="history-analytics" class="analytics-panel"></div>
+
+                <!-- History List -->
+                <ul id="scan-history" aria-label="Scan history list"></ul>
+                <button id="load-more-history" type="button" style="display: none;">Load More</button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="success-sound" preload="auto" aria-hidden="true">
+        <source src="success.mp3" type="audio/mpeg">
+        <source src="success.wav" type="audio/wav">
+    </audio>
+    <audio id="error-sound" preload="auto" aria-hidden="true">
+        <source src="error.mp3" type="audio/mpeg">
+        <source src="error.wav" type="audio/wav">
+    </audio>
+
+    <script src="script.js"></script>
+</body>
+</html>
