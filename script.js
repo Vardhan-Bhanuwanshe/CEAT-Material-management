@@ -5,6 +5,10 @@ let materials = [
   { id: "MAT003", name: "Copper Wire", barcode: "ABC789" }
 ];
 
+// Admin access control
+let isAdmin = false;
+const ADMIN_PASSWORD = "admin123"; // Simple password for demo
+
 // Error types
 const ERROR_TYPES = {
   VALIDATION: 'validation',
@@ -22,14 +26,6 @@ let scanAttempts = 0;
 const MAX_SCAN_ATTEMPTS = 10;
 const SCAN_COOLDOWN = 1000; // 1 second
 let lastScanTime = 0;
-
-// Camera scanner variables
-let currentStream = null;
-let isScanning = false;
-let cameraModal = null;
-let cameraPreview = null;
-let captureCanvas = null;
-let captureContext = null;
 
 // Enhanced history settings
 const historySettings = {
@@ -54,13 +50,12 @@ const historyAnalytics = {
 
 // Initialize DOM elements safely
 function initializeDOMElements() {
-  try {    const elementIds = [
+  try {
+    const elementIds = [
       'material-select', 'expected-barcode', 'expected-code', 'scan-section',
       'barcode-input', 'scan-btn', 'result', 'scan-history', 'success-sound',
-      'error-sound', 'error-container', 'validation-errors', 'camera-scan-btn',
-      'camera-modal', 'camera-preview', 'camera-canvas', 'close-camera',
-      'capture-btn', 'torch-btn', 'camera-status', 'add-material-name',
-      'add-material-barcode', 'add-material-btn', 'delete-material-btn',
+      'error-sound', 'error-container', 'validation-errors',
+      'add-material-name', 'add-material-barcode', 'add-material-btn', 'delete-material-btn',
       'material-validation'
     ];
     
@@ -68,21 +63,13 @@ function initializeDOMElements() {
       const element = document.getElementById(id);
       if (element) {
         domElements[id] = element;
-      } else if (['success-sound', 'error-sound', 'torch-btn'].includes(id)) {
+      } else if (['success-sound', 'error-sound'].includes(id)) {
         // These elements are optional
         console.warn(`Optional element not found: ${id}`);
       } else {
         console.warn(`Required element not found: ${id}`);
       }
     });
-
-    // Initialize camera elements
-    cameraModal = domElements['camera-modal'];
-    cameraPreview = domElements['camera-preview'];
-    captureCanvas = domElements['camera-canvas'];
-    if (captureCanvas) {
-      captureContext = captureCanvas.getContext('2d');
-    }
     
     return true;
   } catch (error) {
@@ -213,6 +200,10 @@ function populateMaterials() {
 
 // --- Delete Material ---
 function handleDeleteMaterial() {
+  if (!checkAdminAccess('deleting materials')) {
+    return;
+  }
+  
   try {
     const materialSelect = domElements['material-select'];
     const validationElement = domElements['material-validation'];
@@ -261,6 +252,7 @@ function handleDeleteMaterial() {
     
     // Update delete button state
     updateDeleteButtonState();
+    updateFooterStats(); // Add this line
     
   } catch (error) {
     console.error('Error deleting material:', error);
@@ -294,9 +286,13 @@ function updateDeleteButtonState() {
   
   if (deleteBtn && materialSelect) {
     const hasSelection = materialSelect.value && materialSelect.value !== '';
-    deleteBtn.disabled = !hasSelection;
+    const canDelete = isAdmin && hasSelection;
     
-    if (hasSelection) {
+    deleteBtn.disabled = !canDelete;
+    
+    if (!isAdmin) {
+      deleteBtn.title = 'Admin access required';
+    } else if (hasSelection) {
       deleteBtn.title = 'Delete selected material';
     } else {
       deleteBtn.title = 'Select a material to delete';
@@ -414,7 +410,15 @@ function loadHistory() {
     }
     
     scanHistory = parsedHistory;
-    parsedHistory.forEach(item => {
+    
+    // Clear existing display first
+    if (domElements['scan-history']) {
+      domElements['scan-history'].innerHTML = '';
+    }
+    
+    // Display history in reverse order (newest first)
+    const reversedHistory = [...parsedHistory].reverse();
+    reversedHistory.forEach(item => {
       if (typeof item === 'string') {
         addHistoryItem(item);
       }
@@ -459,6 +463,10 @@ function saveMaterials() {
 
 // --- Add Material ---
 function handleAddMaterial() {
+  if (!checkAdminAccess('adding materials')) {
+    return;
+  }
+  
   try {
     const nameInput = domElements['add-material-name'];
     const barcodeInput = domElements['add-material-barcode'];
@@ -532,6 +540,8 @@ function handleAddMaterial() {
       handleMaterialSelection();
     }
     
+    updateFooterStats(); // Add this line
+    
   } catch (error) {
     console.error('Error adding material:', error);
     showMaterialValidation('Failed to add material: ' + error.message, 'error');
@@ -572,15 +582,24 @@ function addHistoryItem(item, isDuplicate = false) {
       li.classList.add('success-item');
     } else if (item.includes('❌')) {
       li.classList.add('error-item');
+    } else if (item.includes('🚨')) {
+      li.classList.add('error-item');
     }
     
-    domElements['scan-history'].appendChild(li);
+    // Insert at the beginning (top) instead of appending to end
+    const historyList = domElements['scan-history'];
+    if (historyList.firstChild) {
+      historyList.insertBefore(li, historyList.firstChild);
+    } else {
+      historyList.appendChild(li);
+    }
     
     // Limit history display to prevent performance issues
     const maxDisplayItems = 50;
     const historyItems = domElements['scan-history'].children;
     if (historyItems.length > maxDisplayItems) {
-      domElements['scan-history'].removeChild(historyItems[0]);
+      // Remove the oldest item (last in the list)
+      domElements['scan-history'].removeChild(historyItems[historyItems.length - 1]);
     }
     
   } catch (error) {
@@ -588,7 +607,7 @@ function addHistoryItem(item, isDuplicate = false) {
   }
 }
 
-// Filter and sort history
+// Filter and sort history - update to handle newest first properly
 function getFilteredAndSortedHistory() {
   let filteredHistory = [...scanHistory];
 
@@ -596,7 +615,7 @@ function getFilteredAndSortedHistory() {
   if (historySettings.filter === 'success') {
     filteredHistory = filteredHistory.filter(item => item.includes('✅'));
   } else if (historySettings.filter === 'error') {
-    filteredHistory = filteredHistory.filter(item => item.includes('❌'));
+    filteredHistory = filteredHistory.filter(item => item.includes('❌') || item.includes('🚨'));
   }
   
   // Apply search filter if provided
@@ -623,19 +642,20 @@ function getFilteredAndSortedHistory() {
     });
   }
 
-  // Apply sorting
-  if (historySettings.sort === 'newest') {
+  // Apply sorting - newest is default (no reverse needed)
+  if (historySettings.sort === 'oldest') {
     filteredHistory.reverse();
   }
+  // For 'newest', keep the natural order as scanHistory already stores newest last
 
   return filteredHistory;
 }
 
-// Calculate history analytics
+// Calculate history analytics - update to handle 🚨 entries
 function calculateHistoryAnalytics() {
   historyAnalytics.total = scanHistory.length;
   historyAnalytics.success = scanHistory.filter(item => item.includes('✅')).length;
-  historyAnalytics.error = scanHistory.filter(item => item.includes('❌')).length;
+  historyAnalytics.error = scanHistory.filter(item => item.includes('❌') || item.includes('🚨')).length;
   historyAnalytics.successRate = historyAnalytics.total > 0 ? 
     Math.round((historyAnalytics.success / historyAnalytics.total) * 100) : 0;
   
@@ -656,6 +676,8 @@ function calculateHistoryAnalytics() {
       materialName = item.split(':')[0].replace('✅', '').trim();
     } else if (item.includes('❌')) {
       materialName = item.split(':')[0].replace('❌', '').trim();
+    } else if (item.includes('🚨')) {
+      materialName = item.split(':')[0].replace('🚨', '').trim();
     }
     
     if (materialName) {
@@ -672,7 +694,7 @@ function calculateHistoryAnalytics() {
       
       if (item.includes('✅')) {
         historyAnalytics.materialStats[materialName].success++;
-      } else if (item.includes('❌')) {
+      } else if (item.includes('❌') || item.includes('🚨')) {
         historyAnalytics.materialStats[materialName].error++;
       }
       
@@ -907,13 +929,270 @@ function setupHistoryControls() {
   }
 }
 
+// Admin authentication functions
+function toggleAdminLogin() {
+  if (isAdmin) {
+    logout();
+  } else {
+    showAdminLogin();
+  }
+}
+
+function showAdminLogin() {
+  const password = prompt("Enter admin password:");
+  if (password === ADMIN_PASSWORD) {
+    isAdmin = true;
+    updateAdminUI();
+    showMaterialValidation("Admin access granted", 'success');
+    console.log("Admin logged in");
+  } else if (password !== null) {
+    showMaterialValidation("Invalid admin password", 'error');
+  }
+}
+
+function logout() {
+  isAdmin = false;
+  updateAdminUI();
+  showMaterialValidation("Admin logged out", 'success');
+  console.log("Admin logged out");
+}
+
+function updateAdminUI() {
+  // Update footer admin controls visibility
+  const materialManagementSection = document.querySelector('.footer-section:first-child');
+  const quickActionsSection = document.querySelector('.footer-section:last-child');
+  const adminToggleBtn = document.getElementById('admin-toggle-btn');
+  
+  if (materialManagementSection) {
+    materialManagementSection.style.display = isAdmin ? 'block' : 'none';
+  }
+  
+  if (quickActionsSection) {
+    quickActionsSection.style.display = isAdmin ? 'block' : 'none';
+  }
+  
+  // Update admin toggle button text
+  if (adminToggleBtn) {
+    adminToggleBtn.textContent = isAdmin ? '🔐 Admin Logout' : '🔑 Admin Login';
+    adminToggleBtn.className = isAdmin ? 'admin-btn admin-logout' : 'admin-btn admin-login';
+  }
+  
+  // Hide/show delete button based on admin status
+  updateDeleteButtonState();
+}
+
+function checkAdminAccess(action) {
+  if (!isAdmin) {
+    showMaterialValidation(`Admin access required for ${action}`, 'warning');
+    return false;
+  }
+  return true;
+}
+
 // Initialize history management with new features
 function initializeHistoryManagement() {
   setupHistoryControls();
   calculateHistoryAnalytics();
 }
 
-// Enhanced scan handler
+// Update footer statistics
+function updateFooterStats() {
+  try {
+    const footerScanCount = document.getElementById('footer-scan-count');
+    const footerMaterialCount = document.getElementById('footer-material-count');
+    
+    if (footerScanCount) {
+      footerScanCount.textContent = `Total Scans: ${scanHistory.length}`;
+    }
+    
+    if (footerMaterialCount) {
+      footerMaterialCount.textContent = `Materials: ${materials.length}`;
+    }
+  } catch (error) {
+    console.warn('Failed to update footer stats:', error);
+  }
+}
+
+// Global variable to track alarm audio
+let alarmAudio = null;
+
+// Create continuous alarm sound effect
+function createAlarmSound() {
+  try {
+    // Create audio context for alarm sound
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Create a buffer for a short alarm beep
+    const sampleRate = audioContext.sampleRate;
+    const duration = 0.5; // 0.5 seconds per beep
+    const frameCount = sampleRate * duration;
+    const buffer = audioContext.createBuffer(1, frameCount, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate alarm waveform (alternating high and low frequency)
+    for (let i = 0; i < frameCount; i++) {
+      const time = i / sampleRate;
+      
+      // Create alarm pattern: 800Hz for first half, 600Hz for second half
+      const frequency = time < duration / 2 ? 800 : 600;
+      
+      // Generate square wave for more urgent sound
+      const sample = Math.sin(2 * Math.PI * frequency * time) > 0 ? 1 : -1;
+      
+      // Add envelope to prevent clicks
+      const envelope = Math.sin(Math.PI * time / duration);
+      
+      data[i] = sample * envelope * 0.4; // Volume at 40%
+    }
+    
+    return { audioContext, buffer };
+    
+  } catch (error) {
+    console.warn('Failed to create alarm sound:', error);
+    return null;
+  }
+}
+
+// Start continuous alarm
+function startAlarm() {
+  try {
+    stopAlarm(); // Stop any existing alarm
+    
+    const alarmData = createAlarmSound();
+    if (!alarmData) return;
+    
+    const { audioContext, buffer } = alarmData;
+    
+    // Function to play one beep and schedule the next
+    function playBeep() {
+      if (!alarmAudio) return; // Stop if alarm was stopped
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContext.destination);
+      source.start();
+      
+      // Schedule next beep after a short pause
+      setTimeout(() => {
+        if (alarmAudio) { // Check if alarm is still active
+          playBeep();
+        }
+      }, 700); // 0.5s beep + 0.2s pause = 0.7s total
+    }
+    
+    // Mark alarm as active and start playing
+    alarmAudio = { audioContext, stop: () => { alarmAudio = null; } };
+    playBeep();
+    
+    console.log('Alarm started');
+    
+  } catch (error) {
+    console.warn('Failed to start alarm:', error);
+  }
+}
+
+// Stop continuous alarm
+function stopAlarm() {
+  if (alarmAudio) {
+    alarmAudio.stop();
+    alarmAudio = null;
+    console.log('Alarm stopped');
+  }
+}
+
+// Custom alert dialog for wrong material scans
+function showWrongMaterialAlert(expectedCode, scannedCode, materialName) {
+  // Start continuous alarm
+  startAlarm();
+  
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'alert-overlay';
+  
+  // Create alert dialog
+  const alertDialog = document.createElement('div');
+  alertDialog.className = 'alert-dialog wrong-material-alert';
+  
+  alertDialog.innerHTML = `
+    <div class="alert-icon">⚠️</div>
+    <h3 class="alert-title">Wrong Material Scanned!</h3>
+    <div class="alert-content">
+      <p><strong>Expected Material:</strong> ${materialName}</p>
+      <p><strong>Expected Barcode:</strong> <code>${expectedCode}</code></p>
+      <p><strong>Scanned Barcode:</strong> <code>${scannedCode}</code></p>
+      <p class="alert-message">⚠️ INVALID MATERIAL DETECTED! Please scan the correct material barcode or reset to try again.</p>
+    </div>
+    <div class="alert-actions">
+      <button class="alert-btn alert-btn-primary" id="alert-reset-btn">
+        🔄 Stop Alarm & Reset
+      </button>
+    </div>
+  `;
+  
+  overlay.appendChild(alertDialog);
+  document.body.appendChild(overlay);
+  
+  // Add event listeners
+  const resetBtn = alertDialog.querySelector('#alert-reset-btn');
+  
+  const closeAlert = () => {
+    stopAlarm(); // Stop the alarm when closing
+    document.body.removeChild(overlay);
+  };
+  
+  const resetSystem = () => {
+    // Stop the alarm first
+    stopAlarm();
+    
+    // Clear the barcode input
+    if (domElements['barcode-input']) {
+      domElements['barcode-input'].value = '';
+      domElements['barcode-input'].focus();
+    }
+    
+    // Clear any error styling
+    if (domElements['barcode-input']) {
+      domElements['barcode-input'].className = '';
+    }
+    
+    // Clear result display
+    if (domElements.result) {
+      domElements.result.textContent = `Please scan barcode for ${selectedMaterial.name}`;
+      domElements.result.className = '';
+    }
+    
+    // Reset scan attempts
+    scanAttempts = Math.max(0, scanAttempts - 1);
+    
+    closeAlert();
+    
+    // Show success message
+    setTimeout(() => {
+      displayError('System reset. Ready to scan again.', ERROR_TYPES.VALIDATION, 2000);
+    }, 300);
+  };
+  
+  resetBtn.addEventListener('click', resetSystem);
+  
+  // Close on Escape key (also stops alarm)
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      closeAlert();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  };
+  document.addEventListener('keydown', handleKeydown);
+  
+  // Focus the reset button for accessibility
+  setTimeout(() => {
+    resetBtn.focus();
+  }, 100);
+  
+  // Speak error message
+  speakText('Wrong material scanned. Invalid material detected. Please scan the correct barcode.');
+}
+
+// Enhanced scan handler with improved material validation
 function handleScan() {
   try {
     // Validate rate limiting
@@ -953,32 +1232,60 @@ function handleScan() {
       playSound(true);
       speakText("OK Load");
       
-      // Always add successful scans to history (removed duplicate check)
+      // Always add successful scans to history
       const historyEntry = `✅ ${selectedMaterial.name}: ${scannedCode} (${timestamp})`;
       scanHistory.push(historyEntry);
       addHistoryItem(historyEntry);
       saveHistory();
-    } else {
-      domElements.result.textContent = "❌ WRONG MATERIAL";
-      domElements.result.className = "error";
-      playSound(false);
-      speakText("Wrong material");
       
-      // Always add error scans to history
-      const errorEntry = `❌ ${selectedMaterial.name}: Expected ${expectedCode}, Got ${scannedCode} (${timestamp})`;
-      scanHistory.push(errorEntry);
-      addHistoryItem(errorEntry, true);
-      saveHistory();
+      // Clear input after successful scan
+      domElements['barcode-input'].value = '';
+    } else {
+      // Check if scanned code belongs to any valid material (invalid material detection)
+      const isValidMaterial = materials.some(material => 
+        normalizeBarcode(material.barcode) === scannedCode
+      );
+      
+      if (isValidMaterial) {
+        // Valid material but wrong for current selection - show regular error
+        domElements.result.textContent = "❌ WRONG MATERIAL";
+        domElements.result.className = "error";
+        playSound(false);
+        speakText("Wrong material");
+        
+        // Add to history
+        const errorEntry = `❌ ${selectedMaterial.name}: Expected ${expectedCode}, Got ${scannedCode} (${timestamp})`;
+        scanHistory.push(errorEntry);
+        addHistoryItem(errorEntry, true);
+        saveHistory();
+        
+        // Clear input
+        domElements['barcode-input'].value = '';
+      } else {
+        // Invalid material - show alarm alert
+        showWrongMaterialAlert(expectedCode, scannedCode, selectedMaterial.name);
+        
+        // Update result display
+        domElements.result.textContent = "🚨 INVALID MATERIAL";
+        domElements.result.className = "error";
+        
+        // Add to history with special marking for invalid materials
+        const errorEntry = `🚨 ${selectedMaterial.name}: INVALID MATERIAL - Expected ${expectedCode}, Got ${scannedCode} (${timestamp})`;
+        scanHistory.push(errorEntry);
+        addHistoryItem(errorEntry, true);
+        saveHistory();
+        
+        // Don't clear input so user can see what they scanned
+      }
     }
     
-    domElements['barcode-input'].value = '';
-    
-    // After adding to history, update analytics
+    // After adding to history, update analytics and footer
     if (scanHistory.length > 0) {
       calculateHistoryAnalytics();
       if (document.getElementById('history-analytics')) {
         displayHistoryAnalytics();
       }
+      updateFooterStats();
     }
     
   } catch (error) {
@@ -986,13 +1293,77 @@ function handleScan() {
   }
 }
 
+// Real-time material input validation
+function validateMaterialInputs() {
+  try {
+    const nameInput = domElements['add-material-name'];
+    const barcodeInput = domElements['add-material-barcode'];
+    const validationElement = domElements['material-validation'];
+    
+    if (!nameInput || !barcodeInput || !validationElement) {
+      return;
+    }
+    
+    const name = nameInput.value.trim();
+    const barcode = barcodeInput.value.trim();
+    
+    let errors = [];
+    let warnings = [];
+    
+    // Validate name
+    if (name.length > 0) {
+      if (name.length < 2) {
+        errors.push('Material name must be at least 2 characters');
+      } else if (name.length > 50) {
+        errors.push('Material name must be less than 50 characters');
+      } else if (materials.some(m => m.name.toLowerCase() === name.toLowerCase())) {
+        warnings.push('Material name already exists');
+      }
+    }
+    
+    // Validate barcode
+    if (barcode.length > 0) {
+      if (!/^[a-zA-Z0-9]*$/.test(barcode)) {
+        errors.push('Barcode must contain only letters and numbers');
+      } else if (barcode.length > 0 && barcode.length < 3) {
+        errors.push('Barcode must be at least 3 characters');
+      } else if (barcode.length > 20) {
+        errors.push('Barcode cannot exceed 20 characters');
+      } else if (materials.some(m => m.barcode === barcode)) {
+        warnings.push('Barcode already exists');
+      }
+    }
+    
+    // Update validation display
+    if (errors.length > 0) {
+      showMaterialValidation(errors.join('. '), 'error');
+    } else if (warnings.length > 0) {
+      showMaterialValidation(warnings.join('. '), 'warning');
+    } else if (name.length > 0 || barcode.length > 0) {
+      validationElement.style.display = 'none';
+    }
+    
+    // Update input field styling
+    nameInput.className = errors.some(e => e.includes('name')) ? 'invalid' : 
+                         name.length >= 2 && name.length <= 50 ? 'valid' : '';
+    
+    barcodeInput.className = errors.some(e => e.includes('Barcode')) ? 'invalid' : 
+                            barcode.length >= 3 && barcode.length <= 20 && /^[a-zA-Z0-9]*$/.test(barcode) ? 'valid' : '';
+    
+  } catch (error) {
+    console.warn('Material input validation failed:', error);
+  }
+}
+
 // Enhanced event listeners with error handling
 function setupEventListeners() {
   try {
+    // Material selection
     if (domElements['material-select']) {
       domElements['material-select'].addEventListener('change', handleMaterialSelection);
     }
     
+    // Scan functionality
     if (domElements['scan-btn']) {
       domElements['scan-btn'].addEventListener('click', handleScan);
     }
@@ -1003,30 +1374,23 @@ function setupEventListeners() {
           handleScan();
         }
       });
-    }
-
-    // Camera scanner event listeners
-    if (domElements['camera-scan-btn']) {
-      domElements['camera-scan-btn'].addEventListener('click', openCameraScanner);
-    }
-
-    if (domElements['close-camera']) {
-      domElements['close-camera'].addEventListener('click', closeCameraScanner);
-    }
-
-    if (domElements['capture-btn']) {
-      domElements['capture-btn'].addEventListener('click', captureAndProcessBarcode);
-    }
-
-    if (domElements['torch-btn']) {
-      domElements['torch-btn'].addEventListener('click', toggleTorch);
-    }
-
-    // Close camera modal when clicking outside
-    if (cameraModal) {
-      cameraModal.addEventListener('click', (e) => {
-        if (e.target === cameraModal) {
-          closeCameraScanner();
+      
+      // Add input validation for barcode field
+      domElements['barcode-input'].addEventListener('input', (e) => {
+        const input = e.target.value;
+        const errors = validateBarcodeInput(input);
+        
+        // Update validation display
+        const validationElement = domElements['validation-errors'];
+        if (validationElement) {
+          if (errors.length > 0 && input.length > 0) {
+            validationElement.textContent = errors.join('. ');
+            validationElement.style.display = 'block';
+            e.target.className = 'invalid';
+          } else {
+            validationElement.style.display = 'none';
+            e.target.className = input.length >= 3 && input.length <= 20 && /^[a-zA-Z0-9]*$/.test(input) ? 'valid' : '';
+          }
         }
       });
     }
@@ -1040,9 +1404,10 @@ function setupEventListeners() {
       domElements['delete-material-btn'].addEventListener('click', handleDeleteMaterial);
     }
     
-    // Add real-time validation for material inputs
+    // Real-time validation for material inputs
     if (domElements['add-material-name']) {
       domElements['add-material-name'].addEventListener('input', validateMaterialInputs);
+      domElements['add-material-name'].addEventListener('blur', validateMaterialInputs);
       domElements['add-material-name'].addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -1055,6 +1420,7 @@ function setupEventListeners() {
     
     if (domElements['add-material-barcode']) {
       domElements['add-material-barcode'].addEventListener('input', validateMaterialInputs);
+      domElements['add-material-barcode'].addEventListener('blur', validateMaterialInputs);
       domElements['add-material-barcode'].addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -1062,6 +1428,34 @@ function setupEventListeners() {
         }
       });
     }
+    
+    // Admin toggle button
+    const adminToggleBtn = document.getElementById('admin-toggle-btn');
+    if (adminToggleBtn) {
+      adminToggleBtn.addEventListener('click', toggleAdminLogin);
+    }
+    
+    // History controls
+    const clearButton = document.getElementById('clear-history');
+    if (clearButton) {
+      clearButton.addEventListener('click', clearHistory);
+    }
+    
+    const excelExportButton = document.getElementById('export-excel');
+    if (excelExportButton) {
+      excelExportButton.addEventListener('click', exportHistoryToExcel);
+    }
+    
+    const analyzeButton = document.getElementById('analyze-history');
+    if (analyzeButton) {
+      analyzeButton.addEventListener('click', () => {
+        displayHistoryAnalytics();
+        const analyticsDiv = document.getElementById('history-analytics');
+        if (analyticsDiv) analyticsDiv.style.display = 'block';
+      });
+    }
+    
+    console.log('All event listeners setup successfully');
     
   } catch (error) {
     displayError('Failed to setup event listeners: ' + error.message, ERROR_TYPES.VALIDATION);
@@ -1085,6 +1479,8 @@ function initialize() {
     setupEventListeners();
     loadHistory();
     initializeHistoryManagement();
+    updateFooterStats();
+    updateAdminUI(); // Initialize admin UI state
     console.log('Application initialized successfully');
   } catch (error) {
     displayError('Application initialization failed: ' + error.message, ERROR_TYPES.VALIDATION);
@@ -1111,6 +1507,10 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 function clearHistory() {
+  if (!checkAdminAccess('clearing history')) {
+    return;
+  }
+  
   if (confirm('Are you sure you want to clear all history?')) {
     scanHistory = [];
     localStorage.removeItem('scanHistory');
@@ -1123,6 +1523,7 @@ function clearHistory() {
     if (analyticsDiv) {
       analyticsDiv.innerHTML = '';
     }
+    updateFooterStats();
     displayError('History cleared successfully', ERROR_TYPES.VALIDATION, 2000);
   }
 }
