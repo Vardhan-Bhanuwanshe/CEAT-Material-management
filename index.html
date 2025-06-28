@@ -11,6 +11,7 @@
         <div class="header">
             <h1>🔍 Material Scanner</h1>
             <p>Select material and scan barcode for verification</p>
+            <button id="admin-toggle-btn" class="admin-btn admin-login">🔑 Admin Login</button>
         </div>
         
         <!-- Global error container -->
@@ -24,41 +25,9 @@
                     <option value="">-- Select Material --</option>
                     <!-- Options will be populated by JavaScript -->
                 </select>
-                <div id="material-help" class="help-text">Choose a material to begin scanning</div>                <div id="expected-barcode" style="display:none;">
+                <div id="material-help" class="help-text">Choose a material to begin scanning</div>
+                <div id="expected-barcode" style="display:none;">
                     Expected Barcode: <span id="expected-code"></span>
-                </div>
-                
-                <!-- Material Management Controls -->
-                <div class="material-management">
-                    <h3>📝 Material Management</h3>
-                    <div class="material-controls">
-                        <div class="input-row">
-                            <input 
-                                id="add-material-name" 
-                                type="text" 
-                                placeholder="Material Name" 
-                                maxlength="50"
-                                required
-                            >
-                            <input 
-                                id="add-material-barcode" 
-                                type="text" 
-                                placeholder="Barcode" 
-                                pattern="[a-zA-Z0-9]{3,20}"
-                                maxlength="20"
-                                required
-                            >
-                        </div>
-                        <div class="button-row">
-                            <button id="add-material-btn" type="button" class="add-btn">
-                                ➕ Add Material
-                            </button>
-                            <button id="delete-material-btn" type="button" class="delete-btn">
-                                🗑️ Delete Selected
-                            </button>
-                        </div>
-                        <div id="material-validation" class="validation-message" style="display: none;"></div>
-                    </div>
                 </div>
             </div>
 
@@ -91,7 +60,6 @@
                 <!-- Enhanced History Controls -->
                 <div class="history-controls">
                     <div class="controls-row buttons-row">
-                        <button id="clear-history" type="button">🗑️ Clear History</button>
                         <button id="export-excel" type="button">📈 Export Excel</button>
                         <button id="analyze-history" type="button">📊 Analyze</button>
                     </div>
@@ -106,6 +74,58 @@
             </div>
         </div>
     </div>
+
+    <!-- Footer Section -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section" style="display: none;">
+                <h4>Material Management</h4>
+                <div class="footer-material-controls">
+                    <div class="footer-input-row">
+                        <input 
+                            id="add-material-name" 
+                            type="text" 
+                            placeholder="Material Name" 
+                            maxlength="50"
+                            required
+                        >
+                        <input 
+                            id="add-material-barcode" 
+                            type="text" 
+                            placeholder="Barcode" 
+                            pattern="[a-zA-Z0-9]{3,20}"
+                            maxlength="20"
+                            required
+                        >
+                    </div>
+                    <div class="footer-button-row">
+                        <button id="add-material-btn" type="button" class="footer-add-btn">➕ Add Material</button>
+                        <button id="delete-material-btn" type="button" class="footer-delete-btn">🗑️ Delete Selected</button>
+                    </div>
+                    <div id="material-validation" class="validation-message" style="display: none;"></div>
+                </div>
+            </div>
+            
+            <div class="footer-section" style="display: none;">
+                <h4>Admin Actions</h4>
+                <div class="footer-actions">
+                    <button id="clear-history" type="button" class="footer-action-btn">
+                        🗑️ Clear History
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <div class="footer-bottom-content">
+                <p>&copy; 2024 Material Scanner. Built with ❤️ for efficient inventory management.</p>
+                <div class="footer-stats">
+                    <span id="footer-scan-count">Total Scans: 0</span>
+                    <span id="footer-material-count">Materials: 3</span>
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <audio id="success-sound" preload="auto" aria-hidden="true">
         <source src="success.mp3" type="audio/mpeg">
