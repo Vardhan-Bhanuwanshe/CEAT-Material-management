@@ -3,15 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Material Barcode Scanner</title>
+    <title>DRBS</title>
+    <link rel="icon" type="image/jpeg" href="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg">
+    
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 Material Scanner</h1>
+            <div class="header-logo">
+                <img src="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg" alt="DRBS Logo" class="logo-image">
+                <div class="logo-text">DRBS</div>
+            </div>
+            <h1>DIPPED ROLL BARCODE SYSTEM</h1>
+            <h2>4 ROLL CALENDER</h2>
             <p>Select material and scan barcode for verification</p>
-            <button id="admin-toggle-btn" class="admin-btn admin-login">🔑 Admin Login</button>
+            <button id="admin-toggle-btn" class="admin-btn admin-login" title="Admin Login">🔑</button>
         </div>
         
         <!-- Global error container -->
@@ -32,24 +39,11 @@
             </div>
 
             <div class="section" id="scan-section" style="display:none;">
-                <h2>📱 Barcode Scanner</h2>
-                <label for="barcode-input">Scan Barcode:</label>
-                <input 
-                    id="barcode-input" 
-                    name="barcode" 
-                    inputmode="text" 
-                    pattern="[a-zA-Z0-9]{3,20}" 
-                    autocomplete="off" 
-                    placeholder="Enter or scan barcode..." 
-                    required
-                    minlength="3"
-                    maxlength="20"
-                    aria-describedby="barcode-help validation-errors"
-                />
-                <div id="barcode-help" class="help-text">Enter letters and numbers only (3-20 characters)</div>
+                <h2>📱 USB Barcode Scanner</h2>
+                <p class="scan-instruction">Scan a barcode with your USB barcode scanner. Make sure this window is in focus and scan the barcode.</p>
+                <input type="text" id="barcode-input" placeholder="Focus here and scan barcode..." style="width: 100%; padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 5px;">
+                <div id="scan-help" class="help-text">Click in the input field above and scan your barcode</div>
                 <div id="validation-errors" class="validation-errors" style="display:none;" role="alert"></div>
-                <button id="scan-btn" type="button" aria-describedby="scan-help">🔍 Scan</button>
-                <div id="scan-help" class="help-text">Click to verify the barcode or press Enter</div>
             </div>
 
             <div id="result" aria-live="polite" role="status"></div>
@@ -118,7 +112,7 @@
         
         <div class="footer-bottom">
             <div class="footer-bottom-content">
-                <p>&copy; 2024 Material Scanner. Built with ❤️ for efficient inventory management.</p>
+                <p>&copy; 2024 Material Scanner</p>
                 <div class="footer-stats">
                     <span id="footer-scan-count">Total Scans: 0</span>
                     <span id="footer-material-count">Materials: 3</span>
