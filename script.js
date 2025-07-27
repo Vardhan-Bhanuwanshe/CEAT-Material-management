@@ -1,8 +1,6 @@
-// Updated product data with material names
 let materials = [
-  { id: "MAT001", name: "Steel Rod", barcode: "123456" },
-  { id: "MAT002", name: "Aluminum Sheet", barcode: "00045" },
-  { id: "MAT003", name: "Copper Wire", barcode: "ABC789" }
+  { id: "MAT001", name: "CARTO", barcode: "2444DIP" },
+  { id: "MAT002", name: "TORINO", barcode: "2444DIP" },
 ];
 
 // Admin access control
@@ -53,7 +51,7 @@ function initializeDOMElements() {
   try {
     const elementIds = [
       'material-select', 'expected-barcode', 'expected-code', 'scan-section',
-      'barcode-input', 'scan-btn', 'result', 'scan-history', 'success-sound',
+      'barcode-input', 'result', 'scan-history', 'success-sound',
       'error-sound', 'error-container', 'validation-errors',
       'add-material-name', 'add-material-barcode', 'add-material-btn', 'delete-material-btn',
       'material-validation'
@@ -229,30 +227,67 @@ function handleDeleteMaterial() {
     const materialToDelete = materials[materialIndex];
     
     // Confirm deletion
-    const confirmMessage = `Are you sure you want to delete "${materialToDelete.name}" (${materialToDelete.barcode})?\n\nThis action cannot be undone.`;
+    const confirmMessage = `Are you sure you want to delete "${materialToDelete.name}" (${materialToDelete.barcode})?\n\nThis will completely remove all data for this material and cannot be undone.`;
     if (!confirm(confirmMessage)) {
       return;
     }
     
-    // Remove material
+    // Remove material from array completely
     materials.splice(materialIndex, 1);
     
-    // Save and update UI
+    // Save updated materials to localStorage immediately
     saveMaterials();
+    
+    // Clear current selection if it was the deleted material
+    selectedMaterial = null;
+    
+    // Update the dropdown
     populateMaterials();
     
-    // Reset selection
+    // Reset material selection UI
     if (materialSelect) {
       materialSelect.value = '';
     }
-    handleMaterialSelection();
+    
+    // Hide barcode and scan sections
+    if (domElements['expected-barcode']) {
+      domElements['expected-barcode'].style.display = 'none';
+    }
+    if (domElements['scan-section']) {
+      domElements['scan-section'].style.display = 'none';
+    }
+    
+    // Clear result display
+    if (domElements.result) {
+      domElements.result.textContent = '';
+      domElements.result.className = '';
+    }
+    
+    // Remove any scan history related to this material
+    const materialName = materialToDelete.name;
+    const originalHistoryLength = scanHistory.length;
+    scanHistory = scanHistory.filter(item => !item.includes(materialName));
+    
+    // Save updated history if any items were removed
+    if (scanHistory.length !== originalHistoryLength) {
+      saveHistory();
+      loadHistory(); // Refresh the display
+    }
     
     // Show success message
-    showMaterialValidation(`Material "${materialToDelete.name}" deleted successfully`, 'success');
+    showMaterialValidation(`Material "${materialToDelete.name}" and all related data deleted successfully`, 'success');
     
     // Update delete button state
     updateDeleteButtonState();
-    updateFooterStats(); // Add this line
+    
+    // Update footer stats
+    updateFooterStats();
+    
+    // Reset scan attempts
+    scanAttempts = 0;
+    
+    console.log('Material completely deleted:', materialToDelete);
+    console.log('Remaining materials:', materials.length);
     
   } catch (error) {
     console.error('Error deleting material:', error);
@@ -326,12 +361,17 @@ function handleMaterialSelection() {
     
     // Reset scan attempts for new material
     scanAttempts = 0;
-      if (domElements['barcode-input']) {
-      domElements['barcode-input'].focus();
-    }
     
     // Update delete button state
     updateDeleteButtonState();
+    
+    // Auto-focus the barcode input for USB scanner
+    setTimeout(() => {
+      if (domElements['barcode-input']) {
+        domElements['barcode-input'].focus();
+        console.log(`Ready to scan barcode for ${selectedMaterial.name}`);
+      }
+    }, 100);
     
   } catch (error) {
     displayError('Material selection failed: ' + error.message, ERROR_TYPES.VALIDATION);
@@ -448,17 +488,28 @@ function saveHistory() {
 // --- Material Add/Delete Persistence ---
 function loadMaterials() {
   try {
-    const m = localStorage.getItem('materials');
-    if (m) {
-      const arr = JSON.parse(m);
-      if (Array.isArray(arr) && arr.length) materials = arr;
+    const storedMaterials = localStorage.getItem('materials');
+    if (storedMaterials) {
+      const parsedMaterials = JSON.parse(storedMaterials);
+      if (Array.isArray(parsedMaterials) && parsedMaterials.length > 0) {
+        materials = parsedMaterials;
+        console.log('Materials loaded from localStorage:', materials.length);
+      }
     }
-  } catch {}
+  } catch (error) {
+    console.error('Failed to load materials:', error);
+    // Keep default materials if loading fails
+  }
 }
+
 function saveMaterials() {
   try {
     localStorage.setItem('materials', JSON.stringify(materials));
-  } catch {}
+    console.log('Materials saved to localStorage:', materials.length);
+  } catch (error) {
+    console.error('Failed to save materials:', error);
+    displayError('Failed to save materials: ' + error.message, ERROR_TYPES.STORAGE);
+  }
 }
 
 // --- Add Material ---
@@ -514,17 +565,19 @@ function handleAddMaterial() {
     // Generate new ID
     let maxId = 0;
     materials.forEach(m => {
-      const n = parseInt((m.id || '').replace('MAT', ''), 10);
-      if (!isNaN(n) && n > maxId) maxId = n;
+      const idNum = parseInt((m.id || '').replace('MAT', ''), 10);
+      if (!isNaN(idNum) && idNum > maxId) maxId = idNum;
     });
     const newId = 'MAT' + String(maxId + 1).padStart(3, '0');
     
-    // Add new material
+    // Add new material to array
     const newMaterial = { id: newId, name, barcode };
     materials.push(newMaterial);
     
-    // Save and update UI
+    // Save to localStorage immediately
     saveMaterials();
+    
+    // Update UI
     populateMaterials();
     
     // Clear inputs
@@ -540,7 +593,10 @@ function handleAddMaterial() {
       handleMaterialSelection();
     }
     
-    updateFooterStats(); // Add this line
+    // Update footer stats
+    updateFooterStats();
+    
+    console.log('Material added and saved:', newMaterial);
     
   } catch (error) {
     console.error('Error adding material:', error);
@@ -973,7 +1029,8 @@ function updateAdminUI() {
   
   // Update admin toggle button text
   if (adminToggleBtn) {
-    adminToggleBtn.textContent = isAdmin ? '🔐 Admin Logout' : '🔑 Admin Login';
+    adminToggleBtn.textContent = isAdmin ? '🔐' : '🔑';
+    adminToggleBtn.title = isAdmin ? 'Admin Logout' : 'Admin Login';
     adminToggleBtn.className = isAdmin ? 'admin-btn admin-logout' : 'admin-btn admin-login';
   }
   
@@ -1208,12 +1265,25 @@ function handleScan() {
       return;
     }
     
+    // Get the scanned input
+    const barcodeInput = domElements['barcode-input'];
+    if (!barcodeInput) {
+      displayError('Barcode input not found', ERROR_TYPES.VALIDATION);
+      return;
+    }
+    
+    const input = barcodeInput.value.trim();
+    
+    // Clear the input immediately for next scan
+    barcodeInput.value = '';
+    
     // Validate input
-    const input = domElements['barcode-input']?.value?.trim();
     const inputErrors = validateBarcodeInput(input);
     
     if (inputErrors.length > 0) {
       displayError(inputErrors.join('. '), ERROR_TYPES.VALIDATION);
+      // Keep focus for next scan
+      setTimeout(() => barcodeInput.focus(), 100);
       return;
     }
     
@@ -1238,8 +1308,6 @@ function handleScan() {
       addHistoryItem(historyEntry);
       saveHistory();
       
-      // Clear input after successful scan
-      domElements['barcode-input'].value = '';
     } else {
       // Check if scanned code belongs to any valid material (invalid material detection)
       const isValidMaterial = materials.some(material => 
@@ -1259,8 +1327,6 @@ function handleScan() {
         addHistoryItem(errorEntry, true);
         saveHistory();
         
-        // Clear input
-        domElements['barcode-input'].value = '';
       } else {
         // Invalid material - show alarm alert
         showWrongMaterialAlert(expectedCode, scannedCode, selectedMaterial.name);
@@ -1274,8 +1340,6 @@ function handleScan() {
         scanHistory.push(errorEntry);
         addHistoryItem(errorEntry, true);
         saveHistory();
-        
-        // Don't clear input so user can see what they scanned
       }
     }
     
@@ -1288,8 +1352,19 @@ function handleScan() {
       updateFooterStats();
     }
     
+    // Keep focus on input for continuous scanning
+    setTimeout(() => {
+      barcodeInput.focus();
+    }, 100);
+    
   } catch (error) {
     displayError('Scan processing failed: ' + error.message, ERROR_TYPES.VALIDATION);
+    // Keep focus even on error
+    setTimeout(() => {
+      if (domElements['barcode-input']) {
+        domElements['barcode-input'].focus();
+      }
+    }, 100);
   }
 }
 
@@ -1363,14 +1438,17 @@ function setupEventListeners() {
       domElements['material-select'].addEventListener('change', handleMaterialSelection);
     }
     
-    // Scan functionality
-    if (domElements['scan-btn']) {
-      domElements['scan-btn'].addEventListener('click', handleScan);
-    }
-    
+    // Scan functionality - Remove scan button, USB scanner works automatically
     if (domElements['barcode-input']) {
+      // Focus the input when it becomes visible
+      domElements['barcode-input'].addEventListener('focus', () => {
+        console.log('Barcode input focused - ready for USB scanner');
+      });
+      
+      // Handle Enter key (USB scanners typically send Enter after barcode)
       domElements['barcode-input'].addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
+          e.preventDefault(); // Prevent form submission
           handleScan();
         }
       });
@@ -1469,7 +1547,10 @@ function initialize() {
     if (!window.localStorage) {
       displayError('LocalStorage not supported', ERROR_TYPES.STORAGE);
     }
+    
+    // Load materials first before initializing DOM
     loadMaterials();
+    
     if (!initializeDOMElements()) {
       return;
     }
@@ -1482,6 +1563,7 @@ function initialize() {
     updateFooterStats();
     updateAdminUI(); // Initialize admin UI state
     console.log('Application initialized successfully');
+    console.log('Total materials loaded:', materials.length);
   } catch (error) {
     displayError('Application initialization failed: ' + error.message, ERROR_TYPES.VALIDATION);
   }
