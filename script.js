@@ -1,1611 +1,1757 @@
-let materials = [
-  { id: "MAT001", name: "CARTO", barcode: "2444DIP" },
-  { id: "MAT002", name: "TORINO", barcode: "2444DIP" },
-];
+// Modern DRBS Material Management System
+(function() {
+  'use strict';
 
-// Admin access control
-let isAdmin = false;
-const ADMIN_PASSWORD = "admin123"; // Simple password for demo
-
-// Error types
-const ERROR_TYPES = {
-  VALIDATION: 'validation',
-  STORAGE: 'storage',
-  AUDIO: 'audio',
-  SPEECH: 'speech',
-  NETWORK: 'network'
-};
-
-// DOM elements with error handling
-let domElements = {};
-let scanHistory = [];
-let selectedMaterial = null;
-let scanAttempts = 0;
-const MAX_SCAN_ATTEMPTS = 10;
-const SCAN_COOLDOWN = 1000; // 1 second
-let lastScanTime = 0;
-
-// Enhanced history settings
-const historySettings = {
-  filter: 'all',        // 'all', 'success', 'error'
-  sort: 'newest',       // 'newest', 'oldest'
-  searchTerm: '',       // Search text
-  dateRange: {          // Date range for filtering
-    start: null,
-    end: null
-  }
-};
-
-// History analytics
-const historyAnalytics = {
-  total: 0,
-  success: 0,
-  error: 0,
-  successRate: 0,
-  lastScan: null,
-  materialStats: {} // Stats by material
-};
-
-// Initialize DOM elements safely
-function initializeDOMElements() {
-  try {
-    const elementIds = [
-      'material-select', 'expected-barcode', 'expected-code', 'scan-section',
-      'barcode-input', 'result', 'scan-history', 'success-sound',
-      'error-sound', 'error-container', 'validation-errors',
-      'add-material-name', 'add-material-barcode', 'add-material-btn', 'delete-material-btn',
-      'material-validation'
-    ];
-    
-    elementIds.forEach(id => {
-      const element = document.getElementById(id);
-      if (element) {
-        domElements[id] = element;
-      } else if (['success-sound', 'error-sound'].includes(id)) {
-        // These elements are optional
-        console.warn(`Optional element not found: ${id}`);
-      } else {
-        console.warn(`Required element not found: ${id}`);
-      }
-    });
-    
-    return true;
-  } catch (error) {
-    displayError('DOM initialization failed: ' + error.message, ERROR_TYPES.VALIDATION);
-    return false;
-  }
-}
-
-// Enhanced error display function
-function displayError(message, type = ERROR_TYPES.VALIDATION, duration = 5000) {
-  try {
-    console.error(`[${type.toUpperCase()}] ${message}`);
-    
-    // Display in result div
-    if (domElements.result) {
-      domElements.result.textContent = `⚠️ Error: ${message}`;
-      domElements.result.className = `error error-${type}`;
-      domElements.result.style.display = 'flex';
-    }
-    
-    // Display in error container if available
-    if (domElements['error-container']) {
-      const errorDiv = document.createElement('div');
-      errorDiv.className = `error-message error-${type}`;
-      errorDiv.textContent = message;
-      domElements['error-container'].appendChild(errorDiv);
+  // System Initialization
+  const SystemInitializer = {
+    async initialize() {
+  const loadingOverlay = document.getElementById('system-loading');
+  const progressBar = document.getElementById('loading-progress');
+  const progressFill = document.getElementById('progress-fill');
       
-      // Auto-remove after duration
-      setTimeout(() => {
-        if (errorDiv.parentNode) {
-          errorDiv.parentNode.removeChild(errorDiv);
-        }
-      }, duration);
-    }
-    
-    // Speak error message
-    speakText(`Error: ${message}`);
-    
-  } catch (err) {
-    console.error('Failed to display error:', err);
-  }
-}
-
-// Enhanced validation functions
-function validateMaterialData() {
-  try {
-    if (!Array.isArray(materials) || materials.length === 0) {
-      throw new Error('Materials data is invalid or empty');
-    }
-    
-    materials.forEach((material, index) => {
-      if (!material.id || !material.name || !material.barcode) {
-        throw new Error(`Material at index ${index} is missing required fields`);
+      // Simulate system initialization steps
+      const steps = [
+        { message: 'Loading material database...', duration: 800 },
+        { message: 'Connecting to barcode scanner...', duration: 600 },
+        { message: 'Initializing admin panel...', duration: 500 },
+        { message: 'System ready!', duration: 300 }
+      ];
+      
+      let progress = 0;
+      const progressStep = 100 / steps.length;
+      
+      for (const step of steps) {
+        if (loadingOverlay && progressFill) loadingOverlay.querySelector('#loading-status').textContent = step.message;
+        await this.simulateStep(step.message, step.duration);
+        progress += progressStep;
+        if (progressFill) progressFill.style.width = `${progress}%`;
       }
-      if (typeof material.barcode !== 'string' || material.barcode.trim() === '') {
-        throw new Error(`Material ${material.id} has invalid barcode`);
+
+      // Hide loading screen if present
+      if (loadingOverlay) {
+        setTimeout(() => {
+          loadingOverlay.classList.add('hidden');
+          setTimeout(() => {
+            if (loadingOverlay && loadingOverlay.parentElement) loadingOverlay.parentElement.removeChild(loadingOverlay);
+          }, 500);
+        }, 300);
       }
-    });
+    },
     
-    return true;
-  } catch (error) {
-    displayError('Material data validation failed: ' + error.message, ERROR_TYPES.VALIDATION);
-    return false;
-  }
-}
-
-function validateBarcodeInput(input) {
-  const errors = [];
-  
-  if (!input) {
-    errors.push('Barcode cannot be empty');
-  } else if (input.length < 3) {
-    errors.push('Barcode must be at least 3 characters long');
-  } else if (input.length > 20) {
-    errors.push('Barcode cannot exceed 20 characters');
-  } else if (!/^[a-zA-Z0-9]+$/.test(input)) { // Allow alphanumeric characters
-    errors.push('Barcode must contain only letters and numbers');
-  }
-  
-  return errors;
-}
-
-function validateScanRate() {
-  const currentTime = Date.now();
-  if (currentTime - lastScanTime < SCAN_COOLDOWN) {
-    return { valid: false, error: 'Please wait before scanning again' };
-  }
-  
-  scanAttempts++;
-  if (scanAttempts > MAX_SCAN_ATTEMPTS) {
-    return { valid: false, error: 'Too many scan attempts. Please refresh the page.' };
-  }
-  
-  lastScanTime = currentTime;
-  return { valid: true };
-}
-
-// Enhanced populate materials function
-function populateMaterials() {
-  try {
-    if (!validateMaterialData()) {
-      return false;
+    simulateStep(message, duration) {
+      console.log(`System: ${message}`);
+      return new Promise(resolve => setTimeout(resolve, duration));
     }
-    if (!domElements['material-select']) {
-      throw new Error('Material select element not found');
+  };
+
+  // Utility: focus element without scrolling the page
+  function focusNoScroll(el) {
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch (e) {
+      el.focus();
     }
-    // Clear existing options except the first one
-    const selectElement = domElements['material-select'];
-    while (selectElement.children.length > 1) {
-      selectElement.removeChild(selectElement.lastChild);
+  }
+
+  // Application State
+  const AppState = {
+    currentStep: 1,
+    selectedMaterial: null,
+    scannedBarcode: null,
+    selectedVendor: null,
+    qrData: null,
+    qrScanned: false,
+    sessionStartTime: new Date(),
+    scanHistory: [],
+  lastVendorId: localStorage.getItem('drbs_last_vendor') || null,
+    statistics: {
+      successfulScans: 0,
+      failedScans: 0,
+      accuracy: 100
     }
-    materials.forEach(material => {
+  };
+
+  // Data Management
+  const DataManager = {
+    getMaterials() {
       try {
-        const option = document.createElement('option');
-        option.value = material.id;
-        option.textContent = `${material.name} (${material.id})`;
-        selectElement.appendChild(option);
-      } catch (err) {
-        console.warn(`Failed to add material option for ${material.id}:`, err);
+        const stored = localStorage.getItem('drbs_materials');
+        return stored ? JSON.parse(stored) : this.getDefaultMaterials();
+      } catch (e) {
+        console.warn('Failed to load materials:', e);
+        return this.getDefaultMaterials();
       }
-    });
-    return true;
-  } catch (error) {
-    displayError('Failed to populate materials: ' + error.message, ERROR_TYPES.VALIDATION);
-    return false;
-  }
-}
+    },
 
-// --- Delete Material ---
-function handleDeleteMaterial() {
-  if (!checkAdminAccess('deleting materials')) {
-    return;
-  }
-  
-  try {
-    const materialSelect = domElements['material-select'];
-    const validationElement = domElements['material-validation'];
-    const selectedId = materialSelect?.value;
-    
-    // Clear previous validation
-    if (validationElement) {
-      validationElement.style.display = 'none';
-      validationElement.textContent = '';
+    getDefaultMaterials() {
+      return [
+        { id: 'MAT001', name: 'PVC Sheet', barcode: '123456789012' },
+        { id: 'MAT002', name: 'Rubber Roll', barcode: '123456789013' },
+        { id: 'MAT003', name: 'Steel Plate', barcode: '123456789014' },
+        { id: 'MAT004', name: 'Aluminum Sheet', barcode: '123456789015' },
+        { id: 'MAT005', name: 'Copper Wire', barcode: '123456789016' }
+      ];
+    },
+
+    getVendors() {
+      try {
+        const stored = localStorage.getItem('drbs_vendors');
+        return stored ? JSON.parse(stored) : this.getDefaultVendors();
+      } catch (e) {
+        console.warn('Failed to load vendors:', e);
+        return this.getDefaultVendors();
+      }
+    },
+
+    getDefaultVendors() {
+      return [
+        { id: 'VEN001', code: 'VEN001', name: 'Industrial Supplies Co.' },
+        { id: 'VEN002', code: 'VEN002', name: 'Steel Solutions Ltd.' },
+        { id: 'VEN003', code: 'VEN003', name: 'Global Materials Inc.' },
+        { id: 'VEN004', code: 'VEN004', name: 'Advanced Polymers Inc.' },
+        { id: 'VEN005', code: 'VEN005', name: 'MetalWorks Corporation' }
+      ];
+    },
+
+    saveHistory() {
+      try {
+        localStorage.setItem('drbs_history', JSON.stringify(AppState.scanHistory));
+      } catch (e) {
+        console.error('Failed to save history:', e);
+      }
+    },
+
+    loadHistory() {
+      try {
+        const stored = localStorage.getItem('drbs_history');
+        if (stored) {
+          AppState.scanHistory = JSON.parse(stored);
+          this.updateHistoryDisplay();
+          this.updateStatistics();
+        }
+      } catch (e) {
+        console.warn('Failed to load history:', e);
+      }
+    },
+
+    updateStatistics() {
+      const successful = AppState.scanHistory.filter(h => h.status === 'success').length;
+      const failed = AppState.scanHistory.filter(h => h.status === 'error').length;
+      const total = successful + failed;
+      
+      AppState.statistics.successfulScans = successful;
+      AppState.statistics.failedScans = failed;
+      AppState.statistics.accuracy = total > 0 ? Math.round((successful / total) * 100) : 100;
+      
+      this.updateStatisticsDisplay();
+    },
+
+    updateStatisticsDisplay() {
+      const stats = AppState.statistics;
+      
+      // Update main statistics
+      const successEl = document.getElementById('successful-scans');
+      const failedEl = document.getElementById('failed-scans');
+      const accuracyEl = document.getElementById('accuracy-rate');
+      
+      if (successEl) successEl.textContent = stats.successfulScans;
+      if (failedEl) failedEl.textContent = stats.failedScans;
+      if (accuracyEl) accuracyEl.textContent = stats.accuracy + '%';
+      
+      // Update dashboard metrics
+      const totalScansEl = document.getElementById('total-scans');
+      const successfulScansMetricEl = document.getElementById('successful-scans-metric');
+      const errorScansMetricEl = document.getElementById('error-scans-metric');
+      const accuracyMetricEl = document.getElementById('accuracy-metric');
+      const historyCountEl = document.getElementById('history-count');
+      
+      if (totalScansEl) totalScansEl.textContent = AppState.scanHistory.length;
+      if (successfulScansMetricEl) successfulScansMetricEl.textContent = stats.successfulScans;
+      if (errorScansMetricEl) errorScansMetricEl.textContent = stats.failedScans;
+      if (accuracyMetricEl) accuracyMetricEl.textContent = stats.accuracy + '%';
+      if (historyCountEl) historyCountEl.textContent = AppState.scanHistory.length;
+      
+      // Update counts
+      const materialsEl = document.getElementById('materials-count');
+      const vendorsEl = document.getElementById('vendors-count');
+      
+      if (materialsEl) materialsEl.textContent = this.getMaterials().length;
+      if (vendorsEl) vendorsEl.textContent = this.getVendors().length;
+    },
+
+    updateHistoryDisplay() {
+      const tbody = document.getElementById('history-body');
+      if (!tbody) return;
+
+      // Update history count in header if count badge exists
+      const historyHeader = document.querySelector('.history-header h3');
+      if (historyHeader) {
+        const countBadge = historyHeader.querySelector('.count-badge');
+        if (countBadge) {
+          countBadge.textContent = AppState.scanHistory.length;
+        }
+      }
+
+      if (AppState.scanHistory.length === 0) {
+        tbody.innerHTML = `
+          <tr class="empty-state">
+            <td colspan="6">
+              <div class="empty-message">
+                <i class="fas fa-inbox"></i>
+                <span>No scans yet. Start scanning to see history.</span>
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = AppState.scanHistory.map(entry => `
+        <tr>
+          <td>${entry.timestamp}</td>
+          <td>${entry.materialName}</td>
+          <td><code>${entry.scannedBarcode}</code></td>
+          <td>${entry.vendorName || '-'}</td>
+          <td><span class="status-badge ${entry.status}">${entry.status.toUpperCase()}</span></td>
+          <td>
+            ${entry.qrData ? `
+              <div class="qr-data-cell">
+                <code class="qr-data-preview">${entry.qrData.length > 20 ? entry.qrData.substring(0, 20) + '...' : entry.qrData}</code>
+                <button class="action-btn secondary" onclick="copyQRData('${entry.qrData}')" title="Copy QR Data">
+                  <i class="fas fa-copy"></i>
+                </button>
+                <button class="action-btn" onclick="showQRData('${entry.qrData}')" title="View Full QR Data">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            ` : '<span class="no-qr">No QR Data</span>'}
+          </td>
+        </tr>
+      `).reverse().join('');
     }
+  };
+
+  // UI Manager
+  const UIManager = {
+    showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `
+        <div class="toast-content">
+          <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : 'info-circle'}"></i>
+          <span>${message}</span>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">
+          <i class="fas fa-times"></i>
+        </button>
+      `;
+
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+    },
+
+    updateStepStatus(step, status) {
+      const stepEl = document.getElementById(`step-${step}`);
+      const statusEl = document.getElementById(`step-${step}-status`);
+      
+      if (stepEl && statusEl) {
+        stepEl.className = `workflow-step ${status}`;
+        
+        if (status === 'completed') {
+          statusEl.innerHTML = '<i class="fas fa-check-circle"></i>';
+        } else if (status === 'error') {
+          statusEl.innerHTML = '<i class="fas fa-times-circle"></i>';
+        } else if (status === 'active') {
+          statusEl.innerHTML = '<i class="fas fa-circle-dot"></i>';
+        } else {
+          statusEl.innerHTML = '<i class="fas fa-circle"></i>';
+        }
+      }
+    },
+
+    resetWorkflow() {
+      AppState.currentStep = 1;
+      AppState.selectedMaterial = null;
+      AppState.scannedBarcode = null;
+      AppState.selectedVendor = null;
+      AppState.qrData = null;
+      AppState.qrScanned = false;
+
+      // Reset all steps
+      for (let i = 1; i <= 4; i++) {
+        this.updateStepStatus(i, i === 1 ? 'active' : '');
+      }
+
+      // Reset form elements
+      document.getElementById('material-select').value = '';
+      document.getElementById('vendor-select').value = '';
+      document.getElementById('vendor-select').disabled = true;
+
+      // Hide selection displays
+      document.getElementById('selected-material').style.display = 'none';
+      document.getElementById('selected-vendor').style.display = 'none';
+      
+      // Reset auto-scan area
+      const autoScanArea = document.getElementById('auto-scan-area');
+      if (autoScanArea) {
+        autoScanArea.className = 'auto-scan-area';
+        autoScanArea.innerHTML = `
+          <div class="scan-placeholder">
+            <i class="fas fa-barcode"></i>
+            <span>Select material to start automatic scanning</span>
+          </div>
+        `;
+      }
+      
+      // Hide scan instructions
+      const scanInstructions = document.getElementById('scan-instructions');
+      if (scanInstructions) {
+        scanInstructions.style.display = 'none';
+      }
+
+      // Reset QR display
+      const qrDisplay = document.getElementById('qr-display');
+      qrDisplay.innerHTML = `
+        <div class="qr-placeholder">
+          <i class="fas fa-qrcode"></i>
+          <span>Complete previous steps</span>
+        </div>
+      `;
+      document.getElementById('qr-actions').style.display = 'none';
+    }
+  };
+
+  // Workflow Functions
+  window.handleMaterialSelection = function() {
+    const select = document.getElementById('material-select');
+    const selectedBarcode = select.value;
+    
+    if (!selectedBarcode) {
+      AppState.selectedMaterial = null;
+      document.getElementById('selected-material').style.display = 'none';
+      UIManager.updateStepStatus(1, 'active');
+      UIManager.updateStepStatus(2, '');
+      
+      // Reset auto-scan area
+      const autoScanArea = document.getElementById('auto-scan-area');
+      autoScanArea.className = 'auto-scan-area';
+      autoScanArea.innerHTML = `
+        <div class="scan-placeholder">
+          <i class="fas fa-barcode"></i>
+          <span>Select material to start automatic scanning</span>
+        </div>
+      `;
+      document.getElementById('scan-instructions').style.display = 'none';
+      return;
+    }
+
+    const materials = DataManager.getMaterials();
+    AppState.selectedMaterial = materials.find(m => m.barcode === selectedBarcode);
+    
+  if (AppState.selectedMaterial) {
+      // Show selected material
+      document.getElementById('material-name').textContent = AppState.selectedMaterial.name;
+      document.getElementById('material-barcode').textContent = AppState.selectedMaterial.barcode;
+      document.getElementById('selected-material').style.display = 'block';
+      
+      UIManager.updateStepStatus(1, 'completed');
+      UIManager.updateStepStatus(2, 'active');
+      
+      // Start automatic scanning if auto-scan area exists, otherwise enable manual start
+      if (document.getElementById('auto-scan-area')) {
+        startAutomaticScanning();
+      } else if (document.getElementById('barcode-scan-area')) {
+        const scanArea = document.getElementById('barcode-scan-area');
+        scanArea.className = 'scan-area';
+        scanArea.innerHTML = `
+          <div class="scan-placeholder">
+            <i class="fas fa-crosshairs"></i>
+            <span>Scanner Ready - Click "Start Barcode Scan"</span>
+          </div>
+        `;
+        const btn = document.getElementById('start-barcode-scan');
+        if (btn) btn.disabled = false;
+      }
+      
+      UIManager.showToast(`Material selected: ${AppState.selectedMaterial.name}. Scanner is now ready!`, 'success');
+    }
+  };
+
+  function startAutomaticScanning() {
+    if (!AppState.selectedMaterial) return;
+
+    const autoScanArea = document.getElementById('auto-scan-area') || document.getElementById('barcode-scan-area');
+    const scanInstructions = document.getElementById('scan-instructions');
+    
+    // Update UI to show scanning ready state
+  autoScanArea.className = (autoScanArea.id === 'auto-scan-area') ? 'auto-scan-area ready' : 'scan-area ready';
+    autoScanArea.innerHTML = `
+      <div class="scan-placeholder">
+        <i class="fas fa-crosshairs"></i>
+        <span>Scanner Ready - Waiting for barcode...</span>
+      </div>
+    `;
+    
+    if (scanInstructions) {
+      scanInstructions.style.display = 'block';
+    }
+    
+    // Activate scanner input
+  const barcodeInput = document.getElementById('barcode-input');
+  barcodeInput.value = '';
+  focusNoScroll(barcodeInput);
+    
+    // Enhanced visual feedback with better animation
+    setTimeout(() => {
+      autoScanArea.className = (autoScanArea.id === 'auto-scan-area') ? 'auto-scan-area scanning' : 'scan-area scanning';
+      autoScanArea.innerHTML = `
+        <div class="scan-placeholder">
+          <i class="fas fa-barcode"></i>
+          <span>Scanning Active - Ready to scan</span>
+          <small>Position barcode and scan</small>
+        </div>
+      `;
+      
+      UIManager.showToast('Auto-scanning activated. Ready to scan barcode.', 'info');
+    }, 1000);
+  }
+
+  // Manual start for index-modern flow
+  window.startBarcodeScanning = function() {
+    if (!AppState.selectedMaterial) {
+      UIManager.showToast('Please select a material first', 'warning');
+      return;
+    }
+    const area = document.getElementById('barcode-scan-area');
+    if (area) {
+      area.className = 'scan-area scanning';
+      area.innerHTML = `
+        <div class="scan-placeholder">
+          <i class="fas fa-barcode"></i>
+          <span>Scanning Active - Ready to scan</span>
+          <small>Position barcode and scan</small>
+        </div>`;
+    }
+    const input = document.getElementById('barcode-input');
+    if (input) { input.value = ''; input.focus(); }
+    UIManager.showToast('Scanner ready. Please scan the barcode.', 'info');
+  };
+
+  // QR Code scanning function
+  window.startQRScanning = function() {
+    if (!AppState.qrData) {
+      UIManager.showToast('No QR code generated yet', 'warning');
+      return;
+    }
+    
+    UIManager.showToast('Please scan the QR code to complete the workflow', 'info');
+    
+    // Focus on hidden input for QR scanner
+    const barcodeInput = document.getElementById('barcode-input');
+    if (barcodeInput) {
+      barcodeInput.value = '';
+      barcodeInput.focus();
+    }
+    
+    // Visual feedback for QR scanning mode
+    const qrDisplay = document.getElementById('qr-display');
+    const currentContent = qrDisplay.innerHTML;
+    qrDisplay.innerHTML = `
+      <div class="qr-content">
+        <div class="qr-header" style="text-align: center; margin-bottom: 1rem; color: var(--warning-color);">
+          <i class="fas fa-qrcode fa-pulse" style="font-size: 1.5rem; margin-right: 0.5rem;"></i>
+          <strong>Waiting for QR Code Scan...</strong>
+        </div>
+        <div style="text-align: center; padding: 2rem; background: var(--gray-50); border-radius: 0.5rem; border: 2px dashed var(--warning-color);">
+          <i class="fas fa-camera" style="font-size: 3rem; color: var(--warning-color); margin-bottom: 1rem;"></i>
+          <p>Position the QR code under the scanner</p>
+          <small>The system is ready to receive the QR scan</small>
+        </div>
+      </div>
+    `;
+    
+    // Store original content to restore if needed
+    AppState.originalQRContent = currentContent;
+  };
+
+  window.handleVendorSelection = function() {
+    const select = document.getElementById('vendor-select');
+    const selectedId = select.value;
     
     if (!selectedId) {
-      showMaterialValidation('Please select a material to delete', 'warning');
+      AppState.selectedVendor = null;
+      document.getElementById('selected-vendor').style.display = 'none';
+      UIManager.updateStepStatus(3, 'active');
       return;
     }
-    
-    const materialIndex = materials.findIndex(m => m.id === selectedId);
-    if (materialIndex === -1) {
-      showMaterialValidation('Selected material not found', 'error');
-      return;
-    }
-    
-    const materialToDelete = materials[materialIndex];
-    
-    // Confirm deletion
-    const confirmMessage = `Are you sure you want to delete "${materialToDelete.name}" (${materialToDelete.barcode})?\n\nThis will completely remove all data for this material and cannot be undone.`;
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-    
-    // Remove material from array completely
-    materials.splice(materialIndex, 1);
-    
-    // Save updated materials to localStorage immediately
-    saveMaterials();
-    
-    // Clear current selection if it was the deleted material
-    selectedMaterial = null;
-    
-    // Update the dropdown
-    populateMaterials();
-    
-    // Reset material selection UI
-    if (materialSelect) {
-      materialSelect.value = '';
-    }
-    
-    // Hide barcode and scan sections
-    if (domElements['expected-barcode']) {
-      domElements['expected-barcode'].style.display = 'none';
-    }
-    if (domElements['scan-section']) {
-      domElements['scan-section'].style.display = 'none';
-    }
-    
-    // Clear result display
-    if (domElements.result) {
-      domElements.result.textContent = '';
-      domElements.result.className = '';
-    }
-    
-    // Remove any scan history related to this material
-    const materialName = materialToDelete.name;
-    const originalHistoryLength = scanHistory.length;
-    scanHistory = scanHistory.filter(item => !item.includes(materialName));
-    
-    // Save updated history if any items were removed
-    if (scanHistory.length !== originalHistoryLength) {
-      saveHistory();
-      loadHistory(); // Refresh the display
-    }
-    
-    // Show success message
-    showMaterialValidation(`Material "${materialToDelete.name}" and all related data deleted successfully`, 'success');
-    
-    // Update delete button state
-    updateDeleteButtonState();
-    
-    // Update footer stats
-    updateFooterStats();
-    
-    // Reset scan attempts
-    scanAttempts = 0;
-    
-    console.log('Material completely deleted:', materialToDelete);
-    console.log('Remaining materials:', materials.length);
-    
-  } catch (error) {
-    console.error('Error deleting material:', error);
-    showMaterialValidation('Failed to delete material: ' + error.message, 'error');
-  }
-}
 
-// Helper function to show material validation messages
-function showMaterialValidation(message, type = 'error') {
-  const validationElement = domElements['material-validation'];
-  if (!validationElement) return;
-  
-  validationElement.textContent = message;
-  validationElement.className = `validation-message ${type}`;
-  validationElement.style.display = 'block';
-  
-  // Auto-hide success messages after 3 seconds
-  if (type === 'success') {
-    setTimeout(() => {
-      if (validationElement && validationElement.textContent === message) {
-        validationElement.style.display = 'none';
+    const vendors = DataManager.getVendors();
+    AppState.selectedVendor = vendors.find(v => v.id === selectedId);
+    
+    if (AppState.selectedVendor) {
+      // Show selected vendor
+      document.getElementById('vendor-name').textContent = AppState.selectedVendor.name;
+      document.getElementById('vendor-code').textContent = AppState.selectedVendor.code;
+      document.getElementById('selected-vendor').style.display = 'block';
+      
+      UIManager.updateStepStatus(3, 'completed');
+      UIManager.updateStepStatus(4, 'active');
+      
+      // Remember last vendor for convenience
+      try { localStorage.setItem('drbs_last_vendor', AppState.selectedVendor.id); } catch {}
+
+      // Generate QR code
+      generateQRCode();
+      
+      UIManager.showToast(`Selected vendor: ${AppState.selectedVendor.name}`, 'success');
+    }
+  };
+
+  function generateQRCode() {
+    if (!AppState.selectedMaterial || !AppState.scannedBarcode || !AppState.selectedVendor) {
+      UIManager.showToast('Please complete all previous steps', 'warning');
+      return;
+    }
+
+    const qrData = {
+      timestamp: new Date().toISOString(),
+      material: {
+        id: AppState.selectedMaterial.id,
+        name: AppState.selectedMaterial.name,
+        expectedBarcode: AppState.selectedMaterial.barcode,
+        scannedBarcode: AppState.scannedBarcode
+      },
+      vendor: {
+        id: AppState.selectedVendor.id,
+        code: AppState.selectedVendor.code,
+        name: AppState.selectedVendor.name
+      },
+      session: {
+        startTime: AppState.sessionStartTime.toISOString(),
+        operator: 'System User',
+        sessionId: `DRBS-${Date.now()}`
       }
-    }, 3000);
-  }
-}
+    };
 
-// Helper function to update delete button state
-function updateDeleteButtonState() {
-  const deleteBtn = domElements['delete-material-btn'];
-  const materialSelect = domElements['material-select'];
-  
-  if (deleteBtn && materialSelect) {
-    const hasSelection = materialSelect.value && materialSelect.value !== '';
-    const canDelete = isAdmin && hasSelection;
+    AppState.qrData = JSON.stringify(qrData, null, 2);
     
-    deleteBtn.disabled = !canDelete;
+    // Enhanced QR display with loading animation
+    const qrDisplay = document.getElementById('qr-display');
+    qrDisplay.innerHTML = `
+      <div class="qr-loading" style="text-align: center; padding: 2rem; color: var(--primary-color);">
+        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+        <div>Generating QR Code...</div>
+      </div>
+    `;
     
-    if (!isAdmin) {
-      deleteBtn.title = 'Admin access required';
-    } else if (hasSelection) {
-      deleteBtn.title = 'Delete selected material';
-    } else {
-      deleteBtn.title = 'Select a material to delete';
-    }
-  }
-}
-
-// Enhanced material selection handler
-function handleMaterialSelection() {
-  try {
-    const materialId = domElements['material-select']?.value;
-    
-    if (!materialId) {
-      selectedMaterial = null;
-      domElements['expected-barcode'].style.display = 'none';
-      domElements['scan-section'].style.display = 'none';
-      domElements.result.textContent = '';
-      return;
-    }
-    
-    selectedMaterial = materials.find(m => m.id === materialId);
-    if (!selectedMaterial) {
-      throw new Error(`Material with ID ${materialId} not found`);
-    }
-    
-    domElements['expected-code'].textContent = selectedMaterial.barcode;
-    domElements['expected-barcode'].style.display = 'block';
-    domElements['scan-section'].style.display = 'block';
-    domElements.result.textContent = `Please scan barcode for ${selectedMaterial.name}`;
-    domElements.result.className = '';
-    
-    // Reset scan attempts for new material
-    scanAttempts = 0;
-    
-    // Update delete button state
-    updateDeleteButtonState();
-    
-    // Auto-focus the barcode input for USB scanner
+    // Simulate QR generation process
     setTimeout(() => {
-      if (domElements['barcode-input']) {
-        domElements['barcode-input'].focus();
-        console.log(`Ready to scan barcode for ${selectedMaterial.name}`);
-      }
-    }, 100);
-    
-  } catch (error) {
-    displayError('Material selection failed: ' + error.message, ERROR_TYPES.VALIDATION);
+      qrDisplay.innerHTML = `
+        <div class="qr-content">
+          <div class="qr-header" style="text-align: center; margin-bottom: 1rem; color: var(--success-color);">
+            <i class="fas fa-qrcode" style="font-size: 1.5rem; margin-right: 0.5rem;"></i>
+            <strong>QR Code Generated Successfully</strong>
+          </div>
+          <div class="qr-data-preview" style="background: var(--gray-50); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--gray-200);">
+            <pre style="margin: 0; font-size: 0.875rem; line-height: 1.4;">${AppState.qrData}</pre>
+          </div>
+          <div style="margin-top: 1rem; padding: 1rem; background: var(--warning-color); color: white; border-radius: 0.5rem; text-align: center;">
+            <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>
+            <strong>Please scan this QR code to complete the process</strong>
+          </div>
+        </div>
+      `;
+      
+      document.getElementById('qr-actions').style.display = 'flex';
+      
+      // Update QR actions to include scan button
+      document.getElementById('qr-actions').innerHTML = `
+        <button class="action-btn secondary" onclick="copyQRData()">
+          <i class="fas fa-copy"></i>
+          Copy Data
+        </button>
+        <button class="action-btn" onclick="showFullscreenQR()">
+          <i class="fas fa-expand"></i>
+          View Full
+        </button>
+        <button class="action-btn" onclick="startQRScanning()" style="background: var(--warning-color);">
+          <i class="fas fa-qrcode"></i>
+          Scan QR Code
+        </button>
+      `;
+      
+      UIManager.updateStepStatus(4, 'active');
+      UIManager.showToast('QR code generated! Please scan the QR code to complete the workflow.', 'info');
+      
+    }, 1500); // Enhanced loading experience
   }
-}
 
-// Enhanced audio playback
-function playSound(isSuccess) {
-  try {
-    const soundElement = isSuccess ? domElements['success-sound'] : domElements['error-sound'];
+  // Complete workflow after QR scan
+  function completeAfterQRScan() {
+    // Add to history after QR scan
+    addToHistory('success');
     
-    if (!soundElement) {
-      console.warn('Audio element not found');
-      return;
+    UIManager.updateStepStatus(4, 'completed');
+    UIManager.showToast('🎉 QR code scanned successfully! Workflow complete.', 'success');
+    
+    // Auto-reset after 5 seconds
+    setTimeout(() => {
+      UIManager.resetWorkflow();
+      populateDropdowns();
+      UIManager.showToast('Ready for next scan', 'info');
+    }, 5000);
+  }
+
+  function addToHistory(status) {
+    const entry = {
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleString(),
+      materialName: AppState.selectedMaterial ? AppState.selectedMaterial.name : 'Unknown',
+      expectedBarcode: AppState.selectedMaterial ? AppState.selectedMaterial.barcode : '',
+      scannedBarcode: AppState.scannedBarcode || '',
+  // Ensure vendor is omitted for error/mismatch cases as requested
+  vendorName: status === 'error' ? '' : (AppState.selectedVendor ? AppState.selectedVendor.name : ''),
+      status: status,
+      qrData: AppState.qrData
+    };
+
+    AppState.scanHistory.push(entry);
+    DataManager.saveHistory();
+    DataManager.updateHistoryDisplay();
+    DataManager.updateStatistics();
+  }
+
+  // QR Functions
+  window.copyQRData = function() {
+    if (!AppState.qrData) return;
+    
+    navigator.clipboard.writeText(AppState.qrData).then(() => {
+      UIManager.showToast('QR data copied to clipboard', 'success');
+    }).catch(() => {
+      UIManager.showToast('Failed to copy QR data', 'error');
+    });
+  };
+
+  window.showFullscreenQR = function() {
+    if (!AppState.qrData) return;
+    
+    const modal = document.getElementById('qr-fullscreen-modal');
+    const display = document.getElementById('qr-fullscreen-display');
+    
+    if (modal && display) {
+      display.textContent = AppState.qrData;
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
     }
-    
-    soundElement.currentTime = 0;
-    const playPromise = soundElement.play();
-    
-    if (playPromise !== undefined) {
-      playPromise.catch(error => {
-        console.warn('Audio playback failed:', error);
-        displayError('Audio playback not available', ERROR_TYPES.AUDIO, 2000);
+  };
+
+  window.closeFullscreenQR = function() {
+    const modal = document.getElementById('qr-fullscreen-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  };
+
+  window.copyFullscreenQR = function() {
+    const display = document.getElementById('qr-fullscreen-display');
+    if (display && navigator.clipboard) {
+      navigator.clipboard.writeText(display.textContent).then(() => {
+        UIManager.showToast('QR data copied to clipboard', 'success');
+      }).catch(() => {
+        UIManager.showToast('Failed to copy QR data', 'error');
       });
     }
-  } catch (error) {
-    console.warn('Audio system error:', error);
-  }
-}
+  };
 
-// Enhanced speech synthesis
-function speakText(text) {
-  try {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not supported');
-      return;
+  window.selectFullscreenQRText = function() {
+    const display = document.getElementById('qr-fullscreen-display');
+    if (display) {
+      const range = document.createRange();
+      range.selectNodeContents(display);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
-    
-    if (!text || typeof text !== 'string') {
-      console.warn('Invalid text for speech synthesis');
-      return;
-    }
-    
-    // Cancel any ongoing speech
-    speechSynthesis.cancel();
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.8;
-    utterance.volume = 0.8;
-    
-    utterance.onerror = (event) => {
-      console.warn('Speech synthesis error:', event.error);
-    };
-    
-    speechSynthesis.speak(utterance);
-    
-  } catch (error) {
-    console.warn('Speech synthesis failed:', error);
-  }
-}
+  };
 
-// Enhanced localStorage operations
-function loadHistory() {
-  try {
-    const historyData = localStorage.getItem('scanHistory');
+  // History QR Data Functions
+  window.copyQRData = function(qrData) {
+    if (!qrData) return;
     
-    if (!historyData) {
-      scanHistory = [];
-      return;
-    }
-    
-    const parsedHistory = JSON.parse(historyData);
-    
-    if (!Array.isArray(parsedHistory)) {
-      throw new Error('Invalid history data format');
-    }
-    
-    scanHistory = parsedHistory;
-    
-    // Clear existing display first
-    if (domElements['scan-history']) {
-      domElements['scan-history'].innerHTML = '';
-    }
-    
-    // Display history in reverse order (newest first)
-    const reversedHistory = [...parsedHistory].reverse();
-    reversedHistory.forEach(item => {
-      if (typeof item === 'string') {
-        addHistoryItem(item);
-      }
+    navigator.clipboard.writeText(qrData).then(() => {
+      UIManager.showToast('QR data copied to clipboard', 'success');
+      playBeep(true); // Success sound
+    }).catch(() => {
+      UIManager.showToast('Failed to copy QR data', 'error');
+      playBeep(false); // Error sound
     });
-    
-  } catch (error) {
-    console.warn('Failed to load history:', error);
-    displayError('Failed to load scan history', ERROR_TYPES.STORAGE, 3000);
-    scanHistory = [];
-  }
-}
+  };
 
-function saveHistory() {
-  try {
-    if (!Array.isArray(scanHistory)) {
-      throw new Error('Invalid history data');
+  window.showQRData = function(qrData) {
+    if (!qrData) return;
+    
+    const modal = document.getElementById('qr-fullscreen-modal');
+    const display = document.getElementById('qr-fullscreen-display');
+    
+    if (modal && display) {
+      display.textContent = qrData;
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
     }
-    
-    localStorage.setItem('scanHistory', JSON.stringify(scanHistory));
-    
-  } catch (error) {
-    console.warn('Failed to save history:', error);
-    displayError('Failed to save scan history', ERROR_TYPES.STORAGE, 3000);
-  }
-}
+  };
 
-// --- Material Add/Delete Persistence ---
-function loadMaterials() {
-  try {
-    const storedMaterials = localStorage.getItem('materials');
-    if (storedMaterials) {
-      const parsedMaterials = JSON.parse(storedMaterials);
-      if (Array.isArray(parsedMaterials) && parsedMaterials.length > 0) {
-        materials = parsedMaterials;
-        console.log('Materials loaded from localStorage:', materials.length);
-      }
+  // History Functions
+  window.clearHistory = function() {
+    if (confirm('Are you sure you want to clear all scan history?')) {
+      AppState.scanHistory = [];
+      DataManager.saveHistory();
+      DataManager.updateHistoryDisplay();
+      DataManager.updateStatistics();
+      UIManager.showToast('History cleared', 'info');
     }
-  } catch (error) {
-    console.error('Failed to load materials:', error);
-    // Keep default materials if loading fails
-  }
-}
+  };
 
-function saveMaterials() {
-  try {
-    localStorage.setItem('materials', JSON.stringify(materials));
-    console.log('Materials saved to localStorage:', materials.length);
-  } catch (error) {
-    console.error('Failed to save materials:', error);
-    displayError('Failed to save materials: ' + error.message, ERROR_TYPES.STORAGE);
-  }
-}
-
-// --- Add Material ---
-function handleAddMaterial() {
-  if (!checkAdminAccess('adding materials')) {
-    return;
-  }
-  
-  try {
-    const nameInput = domElements['add-material-name'];
-    const barcodeInput = domElements['add-material-barcode'];
-    const validationElement = domElements['material-validation'];
-    
-    const name = nameInput?.value.trim();
-    const barcode = barcodeInput?.value.trim();
-    
-    // Clear previous validation
-    if (validationElement) {
-      validationElement.style.display = 'none';
-      validationElement.textContent = '';
-    }
-    
-    // Validate inputs
-    let errors = [];
-    if (!name) {
-      errors.push('Material name is required');
-    } else if (name.length < 2) {
-      errors.push('Material name must be at least 2 characters');
-    } else if (name.length > 50) {
-      errors.push('Material name must be less than 50 characters');
-    }
-    
-    if (!barcode) {
-      errors.push('Barcode is required');
-    } else if (!/^[a-zA-Z0-9]{3,20}$/.test(barcode)) {
-      errors.push('Barcode must be 3-20 alphanumeric characters');
-    }
-    
-    // Check for duplicates
-    if (name && materials.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-      errors.push('Material name already exists');
-    }
-    
-    if (barcode && materials.some(m => m.barcode === barcode)) {
-      errors.push('Barcode already exists');
-    }
-    
-    if (errors.length > 0) {
-      showMaterialValidation(errors.join('. '), 'error');
+  window.printHistoryReport = function() {
+    if (AppState.scanHistory.length === 0) {
+      UIManager.showToast('No history data to print', 'warning');
       return;
     }
-    
-    // Generate new ID
-    let maxId = 0;
-    materials.forEach(m => {
-      const idNum = parseInt((m.id || '').replace('MAT', ''), 10);
-      if (!isNaN(idNum) && idNum > maxId) maxId = idNum;
-    });
-    const newId = 'MAT' + String(maxId + 1).padStart(3, '0');
-    
-    // Add new material to array
-    const newMaterial = { id: newId, name, barcode };
-    materials.push(newMaterial);
-    
-    // Save to localStorage immediately
-    saveMaterials();
-    
-    // Update UI
-    populateMaterials();
-    
-    // Clear inputs
-    if (nameInput) nameInput.value = '';
-    if (barcodeInput) barcodeInput.value = '';
-    
-    // Show success message
-    showMaterialValidation(`Material "${name}" added successfully!`, 'success');
-    
-    // Auto-select the new material
-    if (domElements['material-select']) {
-      domElements['material-select'].value = newId;
-      handleMaterialSelection();
-    }
-    
-    // Update footer stats
-    updateFooterStats();
-    
-    console.log('Material added and saved:', newMaterial);
-    
-  } catch (error) {
-    console.error('Error adding material:', error);
-    showMaterialValidation('Failed to add material: ' + error.message, 'error');
-  }
-}
 
-// Enhanced barcode normalization
-function normalizeBarcode(barcode) {
-  try {
-    if (typeof barcode !== 'string') {
-      throw new Error('Barcode must be a string');
-    }
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    const currentDate = new Date().toLocaleString();
     
-    return barcode.replace(/[^a-zA-Z0-9]/g, '').trim(); // Remove non-alphanumeric characters
-  } catch (error) {
-    console.warn('Barcode normalization failed:', error);
-    return '';
-  }
-}
-
-// Enhanced history item addition
-function addHistoryItem(item, isDuplicate = false) {
-  try {
-    if (!item || typeof item !== 'string') {
-      throw new Error('Invalid history item');
-    }
-    
-    if (!domElements['scan-history']) {
-      throw new Error('Scan history element not found');
-    }
-    
-    const li = document.createElement('li');
-    li.textContent = item;
-    
-    if (isDuplicate) {
-      li.classList.add('duplicate');
-    } else if (item.includes('✅')) {
-      li.classList.add('success-item');
-    } else if (item.includes('❌')) {
-      li.classList.add('error-item');
-    } else if (item.includes('🚨')) {
-      li.classList.add('error-item');
-    }
-    
-    // Insert at the beginning (top) instead of appending to end
-    const historyList = domElements['scan-history'];
-    if (historyList.firstChild) {
-      historyList.insertBefore(li, historyList.firstChild);
-    } else {
-      historyList.appendChild(li);
-    }
-    
-    // Limit history display to prevent performance issues
-    const maxDisplayItems = 50;
-    const historyItems = domElements['scan-history'].children;
-    if (historyItems.length > maxDisplayItems) {
-      // Remove the oldest item (last in the list)
-      domElements['scan-history'].removeChild(historyItems[historyItems.length - 1]);
-    }
-    
-  } catch (error) {
-    console.warn('Failed to add history item:', error);
-  }
-}
-
-// Filter and sort history - update to handle newest first properly
-function getFilteredAndSortedHistory() {
-  let filteredHistory = [...scanHistory];
-
-  // Apply status filter
-  if (historySettings.filter === 'success') {
-    filteredHistory = filteredHistory.filter(item => item.includes('✅'));
-  } else if (historySettings.filter === 'error') {
-    filteredHistory = filteredHistory.filter(item => item.includes('❌') || item.includes('🚨'));
-  }
-  
-  // Apply search filter if provided
-  if (historySettings.searchTerm) {
-    const searchTerm = historySettings.searchTerm.toLowerCase();
-    filteredHistory = filteredHistory.filter(item => 
-      item.toLowerCase().includes(searchTerm)
-    );
-  }
-  
-  // Apply date range filter if provided
-  if (historySettings.dateRange.start || historySettings.dateRange.end) {
-    filteredHistory = filteredHistory.filter(item => {
-      // Extract timestamp from history item
-      const match = item.match(/\(([^)]+)\)/);
-      if (match && match[1]) {
-        const itemDate = new Date(match[1]);
-        const startDate = historySettings.dateRange.start ? new Date(historySettings.dateRange.start) : new Date(0);
-        const endDate = historySettings.dateRange.end ? new Date(historySettings.dateRange.end) : new Date(8640000000000000); // Max date
-        
-        return itemDate >= startDate && itemDate <= endDate;
-      }
-      return true; // Include items without valid dates
-    });
-  }
-
-  // Apply sorting - newest is default (no reverse needed)
-  if (historySettings.sort === 'oldest') {
-    filteredHistory.reverse();
-  }
-  // For 'newest', keep the natural order as scanHistory already stores newest last
-
-  return filteredHistory;
-}
-
-// Calculate history analytics - update to handle 🚨 entries
-function calculateHistoryAnalytics() {
-  historyAnalytics.total = scanHistory.length;
-  historyAnalytics.success = scanHistory.filter(item => item.includes('✅')).length;
-  historyAnalytics.error = scanHistory.filter(item => item.includes('❌') || item.includes('🚨')).length;
-  historyAnalytics.successRate = historyAnalytics.total > 0 ? 
-    Math.round((historyAnalytics.success / historyAnalytics.total) * 100) : 0;
-  
-  // Get last scan date
-  if (scanHistory.length > 0) {
-    const lastItem = scanHistory[scanHistory.length - 1];
-    const match = lastItem.match(/\(([^)]+)\)/);
-    historyAnalytics.lastScan = match ? match[1] : null;
-  }
-  
-  // Calculate stats by material
-  historyAnalytics.materialStats = {};
-  scanHistory.forEach(item => {
-    let materialName = '';
-    
-    // Extract material name
-    if (item.includes('✅')) {
-      materialName = item.split(':')[0].replace('✅', '').trim();
-    } else if (item.includes('❌')) {
-      materialName = item.split(':')[0].replace('❌', '').trim();
-    } else if (item.includes('🚨')) {
-      materialName = item.split(':')[0].replace('🚨', '').trim();
-    }
-    
-    if (materialName) {
-      if (!historyAnalytics.materialStats[materialName]) {
-        historyAnalytics.materialStats[materialName] = {
-          total: 0,
-          success: 0,
-          error: 0,
-          rate: 0
-        };
-      }
-      
-      historyAnalytics.materialStats[materialName].total++;
-      
-      if (item.includes('✅')) {
-        historyAnalytics.materialStats[materialName].success++;
-      } else if (item.includes('❌') || item.includes('🚨')) {
-        historyAnalytics.materialStats[materialName].error++;
-      }
-      
-      historyAnalytics.materialStats[materialName].rate = Math.round(
-        (historyAnalytics.materialStats[materialName].success / 
-         historyAnalytics.materialStats[materialName].total) * 100
-      );
-    }
-  });
-}
-
-// Display history analytics (improved for proper display)
-function displayHistoryAnalytics() {
-  const analyticsDiv = document.getElementById('history-analytics');
-  if (!analyticsDiv) return;
-
-  calculateHistoryAnalytics();
-
-  let analyticsHTML = `
-    <h3>📊 Analytics Summary</h3>
-    <div class="analytics-summary">
-      <div class="analytics-item">
-        <span class="analytics-value">${historyAnalytics.total}</span>
-        <span class="analytics-label">Total Scans</span>
-      </div>
-      <div class="analytics-item">
-        <span class="analytics-value">${historyAnalytics.success}</span>
-        <span class="analytics-label">Successful</span>
-      </div>
-      <div class="analytics-item">
-        <span class="analytics-value">${historyAnalytics.error}</span>
-        <span class="analytics-label">Errors</span>
-      </div>
-      <div class="analytics-item">
-        <span class="analytics-value">${historyAnalytics.successRate}%</span>
-        <span class="analytics-label">Success Rate</span>
-      </div>
-    </div>
-  `;
-
-  if (historyAnalytics.lastScan) {
-    analyticsHTML += `
-      <div class="analytics-info">
-        <p><strong>Last Scan:</strong> ${historyAnalytics.lastScan}</p>
-      </div>
-    `;
-  }
-
-  if (Object.keys(historyAnalytics.materialStats).length > 0) {
-    analyticsHTML += '<div class="material-stats"><h4>Material Statistics</h4><table>';
-    analyticsHTML += '<thead><tr><th>Material</th><th>Total</th><th>Success</th><th>Errors</th><th>Success Rate</th></tr></thead><tbody>';
-
-    Object.entries(historyAnalytics.materialStats).forEach(([material, stats]) => {
-      let rowClass = '';
-      if (stats.rate >= 80) rowClass = 'high-success';
-      else if (stats.rate >= 50) rowClass = 'medium-success';
-      else rowClass = 'low-success';
-      analyticsHTML += `
-        <tr class="${rowClass}">
-          <td><strong>${material}</strong></td>
-          <td>${stats.total}</td>
-          <td>${stats.success}</td>
-          <td>${stats.error}</td>
-          <td>${stats.rate}%</td>
-        </tr>
-      `;
-    });
-
-    analyticsHTML += '</tbody></table></div>';
-  } else if (historyAnalytics.total === 0) {
-    analyticsHTML += '<div class="no-data"><p>No scan data available for analysis.</p></div>';
-  }
-
-  analyticsDiv.innerHTML = analyticsHTML;
-  analyticsDiv.style.display = 'block';
-}
-
-// Export history to Excel format with advanced formatting
-function exportHistoryToExcel() {
-  try {
-    const filteredHistory = getFilteredAndSortedHistory();
-    
-    if (filteredHistory.length === 0) {
-      displayError('No history data to export', ERROR_TYPES.VALIDATION, 3000);
-      return;
-    }
-    
-    // Create HTML table for Excel import
-    let htmlContent = `
+    const printContent = `
+      <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-            th { background-color: #4CAF50; color: white; padding: 12px; text-align: left; border: 1px solid #ddd; font-weight: bold; }
-            td { padding: 8px; border: 1px solid #ddd; }
-            .success { background-color: #d4edda; }
-            .error { background-color: #f8d7da; }
-            .center { text-align: center; }
-          </style>
-        </head>
-        <body>
-          <h2>Scan History Report - ${new Date().toLocaleDateString()}</h2>
-          <table>
-            <thead>
+      <head>
+        <title>DRBS - Scan History Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+          .header h1 { margin: 0; color: #3b82f6; }
+          .header p { margin: 5px 0; color: #666; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f8f9fa; font-weight: bold; }
+          tr:nth-child(even) { background-color: #f9f9f9; }
+          .status-success { color: #10b981; font-weight: bold; }
+          .status-error { color: #ef4444; font-weight: bold; }
+          .qr-data { font-family: 'Courier New', monospace; font-size: 12px; max-width: 200px; word-break: break-all; }
+          .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #666; }
+          @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>DRBS - Material Management System</h1>
+          <p>Scan History Report</p>
+          <p>Generated on: ${currentDate}</p>
+          <p>Total Records: ${AppState.scanHistory.length}</p>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Material</th>
+              <th>Barcode</th>
+              <th>Vendor</th>
+              <th>Status</th>
+              <th>QR Code Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${AppState.scanHistory.map(entry => `
               <tr>
-                <th>Status</th>
-                <th>Material</th>
-                <th>Expected Barcode</th>
-                <th>Scanned Barcode</th>
-                <th>Timestamp</th>
-                <th>Result</th>
-                <th>Match</th>
+                <td>${entry.timestamp}</td>
+                <td>${entry.materialName}</td>
+                <td>${entry.scannedBarcode}</td>
+                <td>${entry.vendorName || '-'}</td>
+                <td class="status-${entry.status}">${entry.status.toUpperCase()}</td>
+                <td class="qr-data">${entry.qrData || 'No QR Data'}</td>
               </tr>
-            </thead>
-            <tbody>
-    `;
-    
-    // Convert history items to table rows
-    filteredHistory.forEach(item => {
-      const isSuccess = item.includes('✅');
-      const isError = item.includes('❌');
-      const rowClass = isSuccess ? 'success' : (isError ? 'error' : '');
-      
-      let status = 'Unknown';
-      let material = '';
-      let expectedBarcode = '';
-      let scannedBarcode = '';
-      let timestamp = '';
-      let result = '';
-      let match = '';
-      
-      if (isSuccess) {
-        status = '✅ Success';
-        result = 'OK LOAD';
-        match = '✓ Yes';
+            `).reverse().join('')}
+          </tbody>
+        </table>
         
-        const matchResult = item.match(/✅\s+(.+?):\s+(\w+)\s+\((.+?)\)/);
-        if (matchResult) {
-          material = matchResult[1].trim();
-          scannedBarcode = matchResult[2].trim();
-          expectedBarcode = scannedBarcode;
-          timestamp = matchResult[3].trim();
-        }
-      } else if (isError) {
-        status = '❌ Error';
-        result = 'WRONG MATERIAL';
-        match = '✗ No';
+        <div class="footer">
+          <p>This report contains all scan history data from the DRBS Material Management System</p>
+          <p>4 Roll Calender Material Processing - Production Line Control</p>
+        </div>
         
-        const matchResult = item.match(/❌\s+(.+?):\s+Expected\s+(\w+),\s+Got\s+(\w+)\s+\((.+?)\)/);
-        if (matchResult) {
-          material = matchResult[1].trim();
-          expectedBarcode = matchResult[2].trim();
-          scannedBarcode = matchResult[3].trim();
-          timestamp = matchResult[4].trim();
-        }
-      }
-      
-      htmlContent += `
-        <tr class="${rowClass}">
-          <td class="center">${status}</td>
-          <td>${material}</td>
-          <td class="center">${expectedBarcode}</td>
-          <td class="center">${scannedBarcode}</td>
-          <td>${timestamp}</td>
-          <td class="center">${result}</td>
-          <td class="center">${match}</td>
-        </tr>
-      `;
-    });
-    
-    // Add summary statistics
-    calculateHistoryAnalytics();
-    htmlContent += `
-            </tbody>
-          </table>
-          <br>
-          <h3>Summary Statistics</h3>
-          <table style="width: 50%;">
-            <tr><td><strong>Total Scans:</strong></td><td>${historyAnalytics.total}</td></tr>
-            <tr><td><strong>Successful:</strong></td><td>${historyAnalytics.success}</td></tr>
-            <tr><td><strong>Errors:</strong></td><td>${historyAnalytics.error}</td></tr>
-            <tr><td><strong>Success Rate:</strong></td><td>${historyAnalytics.successRate}%</td></tr>
-          </table>
-        </body>
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+              window.close();
+            }, 500);
+          };
+        </script>
+      </body>
       </html>
     `;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
     
-    // Create and download Excel file
-    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+    UIManager.showToast('Print dialog opened', 'success');
+  };
+
+  window.removeHistoryEntry = function(entryId) {
+    AppState.scanHistory = AppState.scanHistory.filter(entry => entry.id !== entryId);
+    DataManager.saveHistory();
+    DataManager.updateHistoryDisplay();
+    DataManager.updateStatistics();
+    UIManager.showToast('Entry removed', 'info');
+  };
+
+  // Export history as CSV
+  window.exportHistoryCSV = function() {
+    if (AppState.scanHistory.length === 0) {
+      UIManager.showToast('No history to export', 'warning');
+      return;
+    }
+    const headers = ['Time','Material','ExpectedBarcode','ScannedBarcode','Vendor','Status'];
+    const rows = AppState.scanHistory.map(h => [
+      h.timestamp,
+      h.materialName,
+      h.expectedBarcode,
+      h.scannedBarcode,
+      h.vendorName || '',
+      h.status
+    ]);
+    const csv = [headers, ...rows]
+      .map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `scan-history-${timestamp}.xls`;
-    link.click();
-    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drbs_history_${new Date().toISOString().replace(/[:T]/g,'-').slice(0,16)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    displayError(`${filteredHistory.length} history items exported to Excel successfully`, ERROR_TYPES.VALIDATION, 2000);
+    UIManager.showToast('History exported', 'success');
+  };
+
+  // Simple beep feedback for scans
+  function playBeep(success = true) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      // Success: crisp sine ping; Error: short square low beep
+      osc.type = success ? 'sine' : 'square';
+      osc.frequency.setValueAtTime(success ? 880 : 220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.16);
+    } catch (e) {
+      // Ignore audio errors
+    }
+  }
+
+  // Ambulance-like siren for mismatch alert
+  let _siren = { ctx: null, osc: null, gain: null, timer: null };
+  function startSiren() {
+    try {
+      if (_siren.ctx) return; // already running
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      // Start at base frequency and sweep up/down
+      const base = 650; // Hz
+      const peak = 1200; // Hz
+      osc.frequency.setValueAtTime(base, ctx.currentTime);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      // Create repeating sweep up/down to mimic siren
+      const sweep = () => {
+        const now = ctx.currentTime;
+        osc.frequency.cancelScheduledValues(now);
+        osc.frequency.setValueAtTime(base, now);
+        osc.frequency.linearRampToValueAtTime(peak, now + 0.6);
+        osc.frequency.linearRampToValueAtTime(base, now + 1.2);
+      };
+      sweep();
+      const timer = setInterval(sweep, 1200);
+      _siren = { ctx, osc, gain, timer };
+    } catch (e) {
+      // audio might be blocked; ignore
+    }
+  }
+  function stopSiren() {
+    try {
+      if (_siren.timer) { clearInterval(_siren.timer); _siren.timer = null; }
+      if (_siren.gain && _siren.ctx) {
+        const now = _siren.ctx.currentTime;
+        _siren.gain.gain.cancelScheduledValues(now);
+        _siren.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+      }
+      if (_siren.osc && _siren.ctx) {
+        const stopAt = _siren.ctx.currentTime + 0.08;
+        _siren.osc.stop(stopAt);
+      }
+      // Close context after a short delay to allow ramp
+      const ctx = _siren.ctx;
+      setTimeout(() => { try { ctx && ctx.close && ctx.close(); } catch {} }, 120);
+    } finally {
+      _siren = { ctx: null, osc: null, gain: null, timer: null };
+    }
+  }
+
+  // Populate dropdowns
+  function populateDropdowns() {
+    const materials = DataManager.getMaterials();
+    const vendors = DataManager.getVendors();
     
-  } catch (error) {
-    displayError('Failed to export Excel: ' + error.message, ERROR_TYPES.VALIDATION);
-  }
-}
-
-// Enhanced history controls setup
-function setupHistoryControls() {
-  // Removed: filterSelect, sortSelect, groupToggle, searchInput, startDateInput, endDateInput
-  const clearButton = document.getElementById('clear-history');
-  const exportButton = document.getElementById('export-history');
-  // Removed: const importInput = document.getElementById('import-history');
-  const analyzeButton = document.getElementById('analyze-history');
-  const excelExportButton = document.getElementById('export-excel');
-
-  if (clearButton) {
-    clearButton.addEventListener('click', clearHistory);
+    const materialSelect = document.getElementById('material-select');
+    if (materialSelect) {
+      materialSelect.innerHTML = '<option value="">Choose material...</option>' + 
+        materials.map(m => `<option value="${m.barcode}">${m.name} (${m.barcode})</option>`).join('');
+    }
+    
+    const vendorSelect = document.getElementById('vendor-select');
+    if (vendorSelect) {
+      vendorSelect.innerHTML = '<option value="">Choose vendor...</option>' + 
+        vendors.map(v => `<option value="${v.id}">${v.name} (${v.code})</option>`).join('');
+    }
   }
 
-  if (excelExportButton) {
-    excelExportButton.addEventListener('click', exportHistoryToExcel);
+  // Session timer
+  function updateSessionTime() {
+    const now = new Date();
+    const elapsed = Math.floor((now - AppState.sessionStartTime) / 1000);
+    const hours = Math.floor(elapsed / 3600);
+    const minutes = Math.floor((elapsed % 3600) / 60);
+    
+    const sessionTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    
+    const sessionTimeEl = document.getElementById('session-time');
+    const sidebarSessionTimeEl = document.getElementById('sidebar-session-time');
+    
+    if (sessionTimeEl) sessionTimeEl.textContent = sessionTime;
+    if (sidebarSessionTimeEl) sidebarSessionTimeEl.textContent = sessionTime;
   }
 
-  // Removed importInput event listener
+  // Update current time
+  function updateCurrentTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
+    
+    const timeEl = document.getElementById('current-time');
+    
+    if (timeEl) timeEl.textContent = timeString;
+  }
 
-  if (analyzeButton) {
-    analyzeButton.addEventListener('click', () => {
-      displayHistoryAnalytics();
-      const analyticsDiv = document.getElementById('history-analytics');
-      if (analyticsDiv) analyticsDiv.style.display = 'block';
+  // Handle barcode input
+  function handleBarcodeInput() {
+    const barcodeInput = document.getElementById('barcode-input');
+    if (!barcodeInput) return;
+
+    let debounceTimer = null;
+    barcodeInput.addEventListener('input', function(e) {
+      const scanned = e.target.value.trim();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (scanned.length >= 8) { // Minimum barcode length
+          processBarcodeScanned(scanned);
+          e.target.value = '';
+        }
+      }, 60);
+    });
+
+    barcodeInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        const scanned = barcodeInput.value.trim();
+        if (scanned) {
+          processBarcodeScanned(scanned);
+          barcodeInput.value = '';
+        }
+      }
+    });
+
+    // Auto-focus for barcode scanner
+    barcodeInput.addEventListener('blur', function() {
+      if (document.getElementById('auto-scan-area').classList.contains('scanning')) {
+  setTimeout(() => focusNoScroll(barcodeInput), 100);
+      }
     });
   }
-}
 
-// Admin authentication functions
-function toggleAdminLogin() {
-  if (isAdmin) {
-    logout();
-  } else {
-    showAdminLogin();
-  }
-}
-
-function showAdminLogin() {
-  const password = prompt("Enter admin password:");
-  if (password === ADMIN_PASSWORD) {
-    isAdmin = true;
-    updateAdminUI();
-    showMaterialValidation("Admin access granted", 'success');
-    console.log("Admin logged in");
-  } else if (password !== null) {
-    showMaterialValidation("Invalid admin password", 'error');
-  }
-}
-
-function logout() {
-  isAdmin = false;
-  updateAdminUI();
-  showMaterialValidation("Admin logged out", 'success');
-  console.log("Admin logged out");
-}
-
-function updateAdminUI() {
-  // Update footer admin controls visibility
-  const materialManagementSection = document.querySelector('.footer-section:first-child');
-  const quickActionsSection = document.querySelector('.footer-section:last-child');
-  const adminToggleBtn = document.getElementById('admin-toggle-btn');
-  
-  if (materialManagementSection) {
-    materialManagementSection.style.display = isAdmin ? 'block' : 'none';
-  }
-  
-  if (quickActionsSection) {
-    quickActionsSection.style.display = isAdmin ? 'block' : 'none';
-  }
-  
-  // Update admin toggle button text
-  if (adminToggleBtn) {
-    adminToggleBtn.textContent = isAdmin ? '🔐' : '🔑';
-    adminToggleBtn.title = isAdmin ? 'Admin Logout' : 'Admin Login';
-    adminToggleBtn.className = isAdmin ? 'admin-btn admin-logout' : 'admin-btn admin-login';
-  }
-  
-  // Hide/show delete button based on admin status
-  updateDeleteButtonState();
-}
-
-function checkAdminAccess(action) {
-  if (!isAdmin) {
-    showMaterialValidation(`Admin access required for ${action}`, 'warning');
-    return false;
-  }
-  return true;
-}
-
-// Initialize history management with new features
-function initializeHistoryManagement() {
-  setupHistoryControls();
-  calculateHistoryAnalytics();
-}
-
-// Update footer statistics
-function updateFooterStats() {
-  try {
-    const footerScanCount = document.getElementById('footer-scan-count');
-    const footerMaterialCount = document.getElementById('footer-material-count');
-    
-    if (footerScanCount) {
-      footerScanCount.textContent = `Total Scans: ${scanHistory.length}`;
-    }
-    
-    if (footerMaterialCount) {
-      footerMaterialCount.textContent = `Materials: ${materials.length}`;
-    }
-  } catch (error) {
-    console.warn('Failed to update footer stats:', error);
-  }
-}
-
-// Global variable to track alarm audio
-let alarmAudio = null;
-
-// Create continuous alarm sound effect
-function createAlarmSound() {
-  try {
-    // Create audio context for alarm sound
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Create a buffer for a short alarm beep
-    const sampleRate = audioContext.sampleRate;
-    const duration = 0.5; // 0.5 seconds per beep
-    const frameCount = sampleRate * duration;
-    const buffer = audioContext.createBuffer(1, frameCount, sampleRate);
-    const data = buffer.getChannelData(0);
-    
-    // Generate alarm waveform (alternating high and low frequency)
-    for (let i = 0; i < frameCount; i++) {
-      const time = i / sampleRate;
-      
-      // Create alarm pattern: 800Hz for first half, 600Hz for second half
-      const frequency = time < duration / 2 ? 800 : 600;
-      
-      // Generate square wave for more urgent sound
-      const sample = Math.sin(2 * Math.PI * frequency * time) > 0 ? 1 : -1;
-      
-      // Add envelope to prevent clicks
-      const envelope = Math.sin(Math.PI * time / duration);
-      
-      data[i] = sample * envelope * 0.4; // Volume at 40%
-    }
-    
-    return { audioContext, buffer };
-    
-  } catch (error) {
-    console.warn('Failed to create alarm sound:', error);
-    return null;
-  }
-}
-
-// Start continuous alarm
-function startAlarm() {
-  try {
-    stopAlarm(); // Stop any existing alarm
-    
-    const alarmData = createAlarmSound();
-    if (!alarmData) return;
-    
-    const { audioContext, buffer } = alarmData;
-    
-    // Function to play one beep and schedule the next
-    function playBeep() {
-      if (!alarmAudio) return; // Stop if alarm was stopped
-      
-      const source = audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContext.destination);
-      source.start();
-      
-      // Schedule next beep after a short pause
-      setTimeout(() => {
-        if (alarmAudio) { // Check if alarm is still active
-          playBeep();
+  function processBarcodeScanned(scannedBarcode) {
+    // Check if we're in QR scanning mode (step 4)
+    if (AppState.qrData && !AppState.qrScanned) {
+      // This is a QR code scan
+      try {
+        const scannedData = JSON.parse(scannedBarcode);
+        const originalData = JSON.parse(AppState.qrData);
+        
+        // Verify the QR data matches what we generated
+        if (scannedData.material.id === originalData.material.id &&
+            scannedData.vendor.id === originalData.vendor.id &&
+            scannedData.session.sessionId === originalData.session.sessionId) {
+          
+          // QR scan successful
+          AppState.qrScanned = true;
+          playBeep(true);
+          
+          // Update QR display
+          const qrDisplay = document.getElementById('qr-display');
+          qrDisplay.innerHTML = `
+            <div class="qr-content">
+              <div class="qr-header" style="text-align: center; margin-bottom: 1rem; color: var(--success-color);">
+                <i class="fas fa-check-circle" style="font-size: 1.5rem; margin-right: 0.5rem;"></i>
+                <strong>QR Code Scanned Successfully!</strong>
+              </div>
+              <div style="text-align: center; padding: 2rem; background: var(--success-color); color: white; border-radius: 0.5rem;">
+                <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                <p><strong>Workflow Complete!</strong></p>
+                <small>Data has been stored in history</small>
+              </div>
+            </div>
+          `;
+          
+          UIManager.updateStepStatus(4, 'completed');
+          
+          // Now add to history after QR scan
+          addToHistory('success');
+          
+          UIManager.showToast('🎉 QR code scanned successfully! Workflow complete.', 'success');
+          
+          // Auto-reset after 5 seconds
+          setTimeout(() => {
+            UIManager.resetWorkflow();
+            populateDropdowns();
+            UIManager.showToast('Ready for next scan', 'info');
+          }, 5000);
+          
+          return;
+        } else {
+          throw new Error('QR data mismatch');
         }
-      }, 700); // 0.5s beep + 0.2s pause = 0.7s total
+      } catch (e) {
+        // QR scan failed
+        playBeep(false);
+        UIManager.showToast('Invalid QR code. Please scan the correct QR code.', 'error');
+        
+        // Restore original QR display
+        if (AppState.originalQRContent) {
+          document.getElementById('qr-display').innerHTML = AppState.originalQRContent;
+        }
+        return;
+      }
     }
     
-    // Mark alarm as active and start playing
-    alarmAudio = { audioContext, stop: () => { alarmAudio = null; } };
-    playBeep();
-    
-    console.log('Alarm started');
-    
-  } catch (error) {
-    console.warn('Failed to start alarm:', error);
-  }
-}
+    // Regular barcode scanning (step 2)
+    if (!AppState.selectedMaterial) {
+      UIManager.showToast('Please select a material first', 'error');
+      return;
+    }
 
-// Stop continuous alarm
-function stopAlarm() {
-  if (alarmAudio) {
-    alarmAudio.stop();
-    alarmAudio = null;
-    console.log('Alarm stopped');
+    AppState.scannedBarcode = scannedBarcode;
+  const autoScanArea = document.getElementById('auto-scan-area') || document.getElementById('barcode-scan-area');
+  const scanInstructions = document.getElementById('scan-instructions');
+    
+    if (scannedBarcode === AppState.selectedMaterial.barcode) {
+      playBeep(true);
+      // Successful scan with enhanced animation
+  autoScanArea.className = (autoScanArea.id === 'auto-scan-area') ? 'auto-scan-area success' : 'scan-area success';
+      autoScanArea.innerHTML = `
+        <div class="scan-result success">
+          <div class="scan-result-header">
+            <i class="fas fa-check-circle"></i>
+            <strong>Perfect Match! ✓</strong>
+          </div>
+          <div class="scan-result-content">
+            Material: <strong>${AppState.selectedMaterial.name}</strong><br>
+            Barcode: <code>${scannedBarcode}</code><br>
+            <small style="color: var(--success-color); font-weight: 600;">✓ Verification Complete</small>
+          </div>
+        </div>
+      `;
+      
+      if (scanInstructions) {
+        scanInstructions.style.display = 'none';
+      }
+      
+      UIManager.updateStepStatus(2, 'completed');
+      UIManager.updateStepStatus(3, 'active');
+      
+      // Enable vendor selection with visual feedback
+  const vendorSelect = document.getElementById('vendor-select');
+      vendorSelect.disabled = false;
+      vendorSelect.style.borderColor = 'var(--success-color)';
+      
+      UIManager.showToast('✓ Barcode verified successfully! Please select vendor.', 'success');
+      
+      // Auto-focus on vendor selection after animation
+      setTimeout(() => {
+        vendorSelect.focus();
+        vendorSelect.style.borderColor = '';
+  }, 2000);
+  const input = document.getElementById('barcode-input');
+  if (input) { input.value = ''; focusNoScroll(input); }
+      
+    } else {
+      playBeep(false);
+  // Failed scan - Show enhanced custom alert
+      showMismatchAlert(scannedBarcode);
+    }
   }
-}
 
-// Custom alert dialog for wrong material scans
-function showWrongMaterialAlert(expectedCode, scannedCode, materialName) {
-  // Start continuous alarm
-  startAlarm();
-  
-  // Create overlay
-  const overlay = document.createElement('div');
-  overlay.className = 'alert-overlay';
-  
-  // Create alert dialog
-  const alertDialog = document.createElement('div');
-  alertDialog.className = 'alert-dialog wrong-material-alert';
-  
-  alertDialog.innerHTML = `
-    <div class="alert-icon">⚠️</div>
-    <h3 class="alert-title">Wrong Material Scanned!</h3>
-    <div class="alert-content">
-      <p><strong>Expected Material:</strong> ${materialName}</p>
-      <p><strong>Expected Barcode:</strong> <code>${expectedCode}</code></p>
-      <p><strong>Scanned Barcode:</strong> <code>${scannedCode}</code></p>
-      <p class="alert-message">⚠️ INVALID MATERIAL DETECTED! Please scan the correct material barcode or reset to try again.</p>
-    </div>
-    <div class="alert-actions">
-      <button class="alert-btn alert-btn-primary" id="alert-reset-btn">
-        🔄 Stop Alarm & Reset
-      </button>
-    </div>
-  `;
-  
-  overlay.appendChild(alertDialog);
-  document.body.appendChild(overlay);
-  
-  // Add event listeners
-  const resetBtn = alertDialog.querySelector('#alert-reset-btn');
-  
-  const closeAlert = () => {
-    stopAlarm(); // Stop the alarm when closing
-    document.body.removeChild(overlay);
+  function showMismatchAlert(scannedBarcode) {
+    const overlay = document.getElementById('alert-overlay');
+    const modal = document.getElementById('alert-modal');
+    const header = document.getElementById('alert-header');
+    const icon = document.getElementById('alert-icon');
+    const title = document.getElementById('alert-title');
+    const message = document.getElementById('alert-message');
+    const details = document.getElementById('alert-details');
+    const expectedEl = document.getElementById('expected-barcode');
+    const scannedEl = document.getElementById('scanned-barcode');
+    
+    // Configure alert
+    header.className = 'alert-header';
+    icon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+  title.textContent = 'wrong material detected';
+    message.textContent = 'The scanned barcode does not match the selected material. Please verify you have the correct material or select the right material type.';
+    
+    // Show details
+    details.style.display = 'block';
+    expectedEl.textContent = AppState.selectedMaterial.barcode;
+    scannedEl.textContent = scannedBarcode;
+    
+    // Show alert
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  // Start siren when alert opens
+  startSiren();
+    
+    // Update scan area to error state
+  const autoScanArea = document.getElementById('auto-scan-area') || document.getElementById('barcode-scan-area');
+  autoScanArea.className = (autoScanArea.id === 'auto-scan-area') ? 'auto-scan-area error' : 'scan-area error';
+    autoScanArea.innerHTML = `
+      <div class="scan-result error">
+        <div class="scan-result-header">
+          <i class="fas fa-times-circle"></i>
+          <strong>Material Mismatch!</strong>
+        </div>
+        <div class="scan-result-content">
+          Wrong barcode detected.<br>
+          Click "Reset & Continue" to try again.
+        </div>
+      </div>
+    `;
+    
+    UIManager.updateStepStatus(2, 'error');
+  }
+
+  // Alert Functions
+  window.closeAlert = function() {
+    const overlay = document.getElementById('alert-overlay');
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+  // Stop siren on close
+  stopSiren();
   };
-  
-  const resetSystem = () => {
-    // Stop the alarm first
-    stopAlarm();
+
+  window.resetAndRecord = function() {
+    // Add failed scan to history
+    addToHistory('error');
     
-    // Clear the barcode input
-    if (domElements['barcode-input']) {
-      domElements['barcode-input'].value = '';
-      domElements['barcode-input'].focus();
-    }
-    
-    // Clear any error styling
-    if (domElements['barcode-input']) {
-      domElements['barcode-input'].className = '';
-    }
-    
-    // Clear result display
-    if (domElements.result) {
-      domElements.result.textContent = `Please scan barcode for ${selectedMaterial.name}`;
-      domElements.result.className = '';
-    }
-    
-    // Reset scan attempts
-    scanAttempts = Math.max(0, scanAttempts - 1);
-    
+    // Close alert
     closeAlert();
     
     // Show success message
+    UIManager.showToast('Scan recorded in history. Ready for next scan.', 'info');
+    
+    // Reset workflow
     setTimeout(() => {
-      displayError('System reset. Ready to scan again.', ERROR_TYPES.VALIDATION, 2000);
-    }, 300);
+      UIManager.resetWorkflow();
+      populateDropdowns();
+    }, 1500);
   };
-  
-  resetBtn.addEventListener('click', resetSystem);
-  
-  // Close on Escape key (also stops alarm)
-  const handleKeydown = (e) => {
-    if (e.key === 'Escape') {
-      closeAlert();
-      document.removeEventListener('keydown', handleKeydown);
-    }
-  };
-  document.addEventListener('keydown', handleKeydown);
-  
-  // Focus the reset button for accessibility
-  setTimeout(() => {
-    resetBtn.focus();
-  }, 100);
-  
-  // Speak error message
-  speakText('Wrong material scanned. Invalid material detected. Please scan the correct barcode.');
-}
 
-// Enhanced scan handler with improved material validation
-function handleScan() {
-  try {
-    // Validate rate limiting
-    const rateValidation = validateScanRate();
-    if (!rateValidation.valid) {
-      displayError(rateValidation.error, ERROR_TYPES.VALIDATION);
-      return;
-    }
+  // Initialize application
+  document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize system with loading screen
+    await SystemInitializer.initialize();
     
-    // Validate material selection
-    if (!selectedMaterial) {
-      displayError("Please select a material first", ERROR_TYPES.VALIDATION);
-      return;
-    }
+    // Initialize UI
+    populateDropdowns();
+    DataManager.loadHistory();
+    DataManager.updateStatistics(); // Update dashboard metrics
+    UIManager.resetWorkflow();
     
-    // Get the scanned input
-    const barcodeInput = domElements['barcode-input'];
-    if (!barcodeInput) {
-      displayError('Barcode input not found', ERROR_TYPES.VALIDATION);
-      return;
-    }
+    // Setup event handlers
+    handleBarcodeInput();
     
-    const input = barcodeInput.value.trim();
+    // Start timers
+    setInterval(updateCurrentTime, 1000);
+    setInterval(updateSessionTime, 1000);
     
-    // Clear the input immediately for next scan
-    barcodeInput.value = '';
+    // Initial time update
+    updateCurrentTime();
+    updateSessionTime();
     
-    // Validate input
-    const inputErrors = validateBarcodeInput(input);
-    
-    if (inputErrors.length > 0) {
-      displayError(inputErrors.join('. '), ERROR_TYPES.VALIDATION);
-      // Keep focus for next scan
-      setTimeout(() => barcodeInput.focus(), 100);
-      return;
-    }
-    
-    const scannedCode = normalizeBarcode(input);
-    const expectedCode = normalizeBarcode(selectedMaterial.barcode);
-    
-    if (!scannedCode || !expectedCode) {
-      throw new Error('Failed to process barcode data');
-    }
-    
-    const timestamp = new Date().toLocaleString();
-    
-    if (scannedCode === expectedCode) {
-      domElements.result.textContent = "✅ OK LOAD";
-      domElements.result.className = "success";
-      playSound(true);
-      speakText("OK Load");
+    // Close modal on escape or outside click
+    const modal = document.getElementById('qr-fullscreen-modal');
+    if (modal) {
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal || e.target.classList.contains('qr-fullscreen-overlay')) {
+          closeFullscreenQR();
+        }
+      });
       
-      // Always add successful scans to history
-      const historyEntry = `✅ ${selectedMaterial.name}: ${scannedCode} (${timestamp})`;
-      scanHistory.push(historyEntry);
-      addHistoryItem(historyEntry);
-      saveHistory();
-      
-    } else {
-      // Check if scanned code belongs to any valid material (invalid material detection)
-      const isValidMaterial = materials.some(material => 
-        normalizeBarcode(material.barcode) === scannedCode
-      );
-      
-      if (isValidMaterial) {
-        // Valid material but wrong for current selection - show regular error
-        domElements.result.textContent = "❌ WRONG MATERIAL";
-        domElements.result.className = "error";
-        playSound(false);
-        speakText("Wrong material");
-        
-        // Add to history
-        const errorEntry = `❌ ${selectedMaterial.name}: Expected ${expectedCode}, Got ${scannedCode} (${timestamp})`;
-        scanHistory.push(errorEntry);
-        addHistoryItem(errorEntry, true);
-        saveHistory();
-        
-      } else {
-        // Invalid material - show alarm alert
-        showWrongMaterialAlert(expectedCode, scannedCode, selectedMaterial.name);
-        
-        // Update result display
-        domElements.result.textContent = "🚨 INVALID MATERIAL";
-        domElements.result.className = "error";
-        
-        // Add to history with special marking for invalid materials
-        const errorEntry = `🚨 ${selectedMaterial.name}: INVALID MATERIAL - Expected ${expectedCode}, Got ${scannedCode} (${timestamp})`;
-        scanHistory.push(errorEntry);
-        addHistoryItem(errorEntry, true);
-        saveHistory();
-      }
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.style.display !== 'none') {
+          closeFullscreenQR();
+        }
+      });
     }
     
-    // After adding to history, update analytics and footer
-    if (scanHistory.length > 0) {
-      calculateHistoryAnalytics();
-      if (document.getElementById('history-analytics')) {
-        displayHistoryAnalytics();
-      }
-      updateFooterStats();
+    UIManager.showToast('DRBS Material Management System ready', 'info');
+  });
+
+  // =============================================================================
+  // ADMIN PANEL FUNCTIONALITY
+  // =============================================================================
+  
+  // Admin Panel Management
+  window.openAdminPanel = function() {
+    // Admin password protection
+    const adminPassword = "admin123"; // You can change this password
+    const enteredPassword = prompt("Enter Admin Password:");
+    
+    if (enteredPassword === null) {
+      // User cancelled the prompt
+      return;
     }
     
-    // Keep focus on input for continuous scanning
-    setTimeout(() => {
-      barcodeInput.focus();
-    }, 100);
+    if (enteredPassword !== adminPassword) {
+      // Wrong password
+      showToast("Access Denied: Invalid password", "error");
+      playBeep(false); // Error sound
+      return;
+    }
     
-  } catch (error) {
-    displayError('Scan processing failed: ' + error.message, ERROR_TYPES.VALIDATION);
-    // Keep focus even on error
-    setTimeout(() => {
-      if (domElements['barcode-input']) {
-        domElements['barcode-input'].focus();
-      }
-    }, 100);
+    // Correct password - open admin panel
+    const modal = document.getElementById('admin-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      loadAdminData();
+      updateTabBadges();
+      showToast("Admin panel opened successfully", "success");
+      playBeep(true); // Success sound
+    }
+  };
+
+  window.closeAdminPanel = function() {
+    const modal = document.getElementById('admin-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+      hideAllForms();
+    }
+  };
+
+  window.showAdminSection = function(section) {
+    // Hide all sections
+    document.querySelectorAll('.admin-section').forEach(s => {
+      s.style.display = 'none';
+      s.classList.remove('active');
+    });
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.admin-tab').forEach(t => {
+      t.classList.remove('active');
+    });
+    
+    // Show selected section
+    const targetSection = document.getElementById(`admin-${section}`);
+    const targetTab = document.querySelector(`[onclick="showAdminSection('${section}')"]`);
+    
+    if (targetSection) {
+      targetSection.style.display = 'block';
+      targetSection.classList.add('active');
+    }
+    
+    if (targetTab) {
+      targetTab.classList.add('active');
+    }
+    
+    hideAllForms();
+    
+    // Load section-specific data
+    if (section === 'materials') {
+      loadMaterialsTable();
+    } else if (section === 'vendors') {
+      loadVendorsTable();
+    } else if (section === 'settings') {
+      updateAdminInfo();
+    }
+  };
+
+  function updateTabBadges() {
+    const materials = DataManager.getMaterials();
+    const vendors = DataManager.getVendors();
+    
+    const materialsBadge = document.getElementById('materials-count-badge');
+    const vendorsBadge = document.getElementById('vendors-count-badge');
+    
+    if (materialsBadge) materialsBadge.textContent = materials.length;
+    if (vendorsBadge) vendorsBadge.textContent = vendors.length;
   }
-}
 
-// Real-time material input validation
-function validateMaterialInputs() {
-  try {
-    const nameInput = domElements['add-material-name'];
-    const barcodeInput = domElements['add-material-barcode'];
-    const validationElement = domElements['material-validation'];
-    
-    if (!nameInput || !barcodeInput || !validationElement) {
-      return;
+  // Enhanced Materials Management
+  window.generateBarcode = function() {
+    const barcodeInput = document.getElementById('material-barcode-input');
+    if (barcodeInput) {
+      const timestamp = Date.now().toString();
+      const randomPart = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const barcode = timestamp.slice(-8) + randomPart;
+      barcodeInput.value = barcode;
+      UIManager.showToast('Barcode generated', 'success');
     }
+  };
+
+  window.filterMaterials = function() {
+    const searchTerm = document.getElementById('materials-search').value.toLowerCase();
+    const tableRows = document.querySelectorAll('#materials-table-body tr');
+    
+    tableRows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+  };
+
+  // Enhanced Vendors Management  
+  window.filterVendors = function() {
+    const searchTerm = document.getElementById('vendors-search').value.toLowerCase();
+    const tableRows = document.querySelectorAll('#vendors-table-body tr');
+    
+    tableRows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+  };
+
+  function hideAllForms() {
+    const forms = document.querySelectorAll('.add-form');
+    forms.forEach(form => form.style.display = 'none');
+  }
+
+  function loadAdminData() {
+    loadMaterialsTable();
+    updateAdminInfo();
+  }
+
+  // Materials Management
+  window.showAddMaterialForm = function() {
+    const form = document.getElementById('add-material-form');
+    if (form) {
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') {
+        document.getElementById('material-name-input').focus();
+      }
+    }
+  };
+
+  window.hideAddMaterialForm = function() {
+    const form = document.getElementById('add-material-form');
+    if (form) {
+      form.style.display = 'none';
+      clearMaterialForm();
+    }
+  };
+
+  window.addMaterial = function() {
+    const nameInput = document.getElementById('material-name-input');
+    const barcodeInput = document.getElementById('material-barcode-input');
     
     const name = nameInput.value.trim();
     const barcode = barcodeInput.value.trim();
     
-    let errors = [];
-    let warnings = [];
-    
-    // Validate name
-    if (name.length > 0) {
-      if (name.length < 2) {
-        errors.push('Material name must be at least 2 characters');
-      } else if (name.length > 50) {
-        errors.push('Material name must be less than 50 characters');
-      } else if (materials.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-        warnings.push('Material name already exists');
-      }
-    }
-    
-    // Validate barcode
-    if (barcode.length > 0) {
-      if (!/^[a-zA-Z0-9]*$/.test(barcode)) {
-        errors.push('Barcode must contain only letters and numbers');
-      } else if (barcode.length > 0 && barcode.length < 3) {
-        errors.push('Barcode must be at least 3 characters');
-      } else if (barcode.length > 20) {
-        errors.push('Barcode cannot exceed 20 characters');
-      } else if (materials.some(m => m.barcode === barcode)) {
-        warnings.push('Barcode already exists');
-      }
-    }
-    
-    // Update validation display
-    if (errors.length > 0) {
-      showMaterialValidation(errors.join('. '), 'error');
-    } else if (warnings.length > 0) {
-      showMaterialValidation(warnings.join('. '), 'warning');
-    } else if (name.length > 0 || barcode.length > 0) {
-      validationElement.style.display = 'none';
-    }
-    
-    // Update input field styling
-    nameInput.className = errors.some(e => e.includes('name')) ? 'invalid' : 
-                         name.length >= 2 && name.length <= 50 ? 'valid' : '';
-    
-    barcodeInput.className = errors.some(e => e.includes('Barcode')) ? 'invalid' : 
-                            barcode.length >= 3 && barcode.length <= 20 && /^[a-zA-Z0-9]*$/.test(barcode) ? 'valid' : '';
-    
-  } catch (error) {
-    console.warn('Material input validation failed:', error);
-  }
-}
-
-// Enhanced event listeners with error handling
-function setupEventListeners() {
-  try {
-    // Material selection
-    if (domElements['material-select']) {
-      domElements['material-select'].addEventListener('change', handleMaterialSelection);
-    }
-    
-    // Scan functionality - Remove scan button, USB scanner works automatically
-    if (domElements['barcode-input']) {
-      // Focus the input when it becomes visible
-      domElements['barcode-input'].addEventListener('focus', () => {
-        console.log('Barcode input focused - ready for USB scanner');
-      });
-      
-      // Handle Enter key (USB scanners typically send Enter after barcode)
-      domElements['barcode-input'].addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault(); // Prevent form submission
-          handleScan();
-        }
-      });
-      
-      // Add input validation for barcode field
-      domElements['barcode-input'].addEventListener('input', (e) => {
-        const input = e.target.value;
-        const errors = validateBarcodeInput(input);
-        
-        // Update validation display
-        const validationElement = domElements['validation-errors'];
-        if (validationElement) {
-          if (errors.length > 0 && input.length > 0) {
-            validationElement.textContent = errors.join('. ');
-            validationElement.style.display = 'block';
-            e.target.className = 'invalid';
-          } else {
-            validationElement.style.display = 'none';
-            e.target.className = input.length >= 3 && input.length <= 20 && /^[a-zA-Z0-9]*$/.test(input) ? 'valid' : '';
-          }
-        }
-      });
-    }
-
-    // Material management event listeners
-    if (domElements['add-material-btn']) {
-      domElements['add-material-btn'].addEventListener('click', handleAddMaterial);
-    }
-    
-    if (domElements['delete-material-btn']) {
-      domElements['delete-material-btn'].addEventListener('click', handleDeleteMaterial);
-    }
-    
-    // Real-time validation for material inputs
-    if (domElements['add-material-name']) {
-      domElements['add-material-name'].addEventListener('input', validateMaterialInputs);
-      domElements['add-material-name'].addEventListener('blur', validateMaterialInputs);
-      domElements['add-material-name'].addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          if (domElements['add-material-barcode']) {
-            domElements['add-material-barcode'].focus();
-          }
-        }
-      });
-    }
-    
-    if (domElements['add-material-barcode']) {
-      domElements['add-material-barcode'].addEventListener('input', validateMaterialInputs);
-      domElements['add-material-barcode'].addEventListener('blur', validateMaterialInputs);
-      domElements['add-material-barcode'].addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleAddMaterial();
-        }
-      });
-    }
-    
-    // Admin toggle button
-    const adminToggleBtn = document.getElementById('admin-toggle-btn');
-    if (adminToggleBtn) {
-      adminToggleBtn.addEventListener('click', toggleAdminLogin);
-    }
-    
-    // History controls
-    const clearButton = document.getElementById('clear-history');
-    if (clearButton) {
-      clearButton.addEventListener('click', clearHistory);
-    }
-    
-    const excelExportButton = document.getElementById('export-excel');
-    if (excelExportButton) {
-      excelExportButton.addEventListener('click', exportHistoryToExcel);
-    }
-    
-    const analyzeButton = document.getElementById('analyze-history');
-    if (analyzeButton) {
-      analyzeButton.addEventListener('click', () => {
-        displayHistoryAnalytics();
-        const analyticsDiv = document.getElementById('history-analytics');
-        if (analyticsDiv) analyticsDiv.style.display = 'block';
-      });
-    }
-    
-    console.log('All event listeners setup successfully');
-    
-  } catch (error) {
-    displayError('Failed to setup event listeners: ' + error.message, ERROR_TYPES.VALIDATION);
-  }
-}
-
-// Enhanced initialization
-function initialize() {
-  try {
-    // Check for required browser features
-    if (!window.localStorage) {
-      displayError('LocalStorage not supported', ERROR_TYPES.STORAGE);
-    }
-    
-    // Load materials first before initializing DOM
-    loadMaterials();
-    
-    if (!initializeDOMElements()) {
+    if (!name || !barcode) {
+      UIManager.showToast('Please fill in all fields', 'error');
       return;
     }
-    if (!populateMaterials()) {
+    
+    const materials = DataManager.getMaterials();
+    
+    // Check if barcode already exists
+    if (materials.some(m => m.barcode === barcode)) {
+      UIManager.showToast('Barcode already exists', 'error');
       return;
     }
-    setupEventListeners();
-    loadHistory();
-    initializeHistoryManagement();
-    updateFooterStats();
-    updateAdminUI(); // Initialize admin UI state
-    console.log('Application initialized successfully');
-    console.log('Total materials loaded:', materials.length);
-  } catch (error) {
-    displayError('Application initialization failed: ' + error.message, ERROR_TYPES.VALIDATION);
-  }
-}
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize);
-} else {
-  initialize();
-}
-
-// Global error handler
-window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
-  displayError('An unexpected error occurred', ERROR_TYPES.VALIDATION);
-});
-
-// Handle unhandled promise rejections
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason);
-  displayError('An unexpected error occurred', ERROR_TYPES.VALIDATION);
-});
-
-function clearHistory() {
-  if (!checkAdminAccess('clearing history')) {
-    return;
-  }
-  
-  if (confirm('Are you sure you want to clear all history?')) {
-    scanHistory = [];
-    localStorage.removeItem('scanHistory');
-    // Clear the displayed history list
-    if (domElements['scan-history']) {
-      domElements['scan-history'].innerHTML = '';
+    
+    // Generate new ID
+    const newId = `MAT${String(materials.length + 1).padStart(3, '0')}`;
+    
+    // Add new material
+    const newMaterial = {
+      id: newId,
+      name: name,
+      barcode: barcode
+    };
+    
+    materials.push(newMaterial);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('drbs_materials', JSON.stringify(materials));
+      UIManager.showToast('Material added successfully', 'success');
+      loadMaterialsTable();
+      populateDropdowns();
+      clearMaterialForm();
+      hideAddMaterialForm();
+      updateAdminInfo();
+    } catch (e) {
+      UIManager.showToast('Failed to save material', 'error');
     }
-    calculateHistoryAnalytics();
-    const analyticsDiv = document.getElementById('history-analytics');
-    if (analyticsDiv) {
-      analyticsDiv.innerHTML = '';
+  };
+
+  window.deleteMaterial = function(materialId) {
+    if (!confirm('Are you sure you want to delete this material?')) return;
+    
+    const materials = DataManager.getMaterials();
+    const filteredMaterials = materials.filter(m => m.id !== materialId);
+    
+    try {
+      localStorage.setItem('drbs_materials', JSON.stringify(filteredMaterials));
+      UIManager.showToast('Material deleted successfully', 'success');
+      loadMaterialsTable();
+      populateDropdowns();
+      updateAdminInfo();
+    } catch (e) {
+      UIManager.showToast('Failed to delete material', 'error');
     }
-    updateFooterStats();
-    displayError('History cleared successfully', ERROR_TYPES.VALIDATION, 2000);
+  };
+
+  function clearMaterialForm() {
+    document.getElementById('material-name-input').value = '';
+    document.getElementById('material-barcode-input').value = '';
   }
-}
+
+  function loadMaterialsTable() {
+    const tbody = document.getElementById('materials-table-body');
+    if (!tbody) return;
+    
+    const materials = DataManager.getMaterials();
+    
+    if (materials.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--gray-500);">No materials found</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = materials.map(material => `
+      <tr>
+        <td>${material.id}</td>
+        <td>${material.name}</td>
+        <td><code>${material.barcode}</code></td>
+        <td>
+          <button class="delete-btn" onclick="deleteMaterial('${material.id}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // Vendors Management
+  window.showAddVendorForm = function() {
+    const form = document.getElementById('add-vendor-form');
+    if (form) {
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') {
+        document.getElementById('vendor-name-input').focus();
+      }
+    }
+  };
+
+  window.hideAddVendorForm = function() {
+    const form = document.getElementById('add-vendor-form');
+    if (form) {
+      form.style.display = 'none';
+      clearVendorForm();
+    }
+  };
+
+  window.addVendor = function() {
+    const nameInput = document.getElementById('vendor-name-input');
+    const codeInput = document.getElementById('vendor-code-input');
+    const emailInput = document.getElementById('vendor-email-input');
+    const phoneInput = document.getElementById('vendor-phone-input');
+    const addressInput = document.getElementById('vendor-address-input');
+    
+    const name = nameInput.value.trim();
+    const code = codeInput.value.trim();
+    const email = emailInput ? emailInput.value.trim() : '';
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const address = addressInput ? addressInput.value.trim() : '';
+    
+    if (!name || !code) {
+      UIManager.showToast('Please fill in name and code fields', 'error');
+      return;
+    }
+    
+    const vendors = DataManager.getVendors();
+    
+    // Check if code already exists
+    if (vendors.some(v => v.code === code)) {
+      UIManager.showToast('Vendor code already exists', 'error');
+      return;
+    }
+    
+    // Generate new ID
+    const newId = `VEN${String(vendors.length + 1).padStart(3, '0')}`;
+    
+    // Add new vendor
+    const newVendor = {
+      id: newId,
+      code: code,
+      name: name,
+      email: email,
+      phone: phone,
+      address: address
+    };
+    
+    vendors.push(newVendor);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('drbs_vendors', JSON.stringify(vendors));
+      UIManager.showToast('Vendor added successfully', 'success');
+      loadVendorsTable();
+      populateDropdowns();
+      clearVendorForm();
+      hideAddVendorForm();
+      updateAdminInfo();
+      updateTabBadges();
+    } catch (e) {
+      UIManager.showToast('Failed to save vendor', 'error');
+    }
+  };
+
+  window.deleteVendor = function(vendorId) {
+    if (!confirm('Are you sure you want to delete this vendor?')) return;
+    
+    const vendors = DataManager.getVendors();
+    const filteredVendors = vendors.filter(v => v.id !== vendorId);
+    
+    try {
+      localStorage.setItem('drbs_vendors', JSON.stringify(filteredVendors));
+      UIManager.showToast('Vendor deleted successfully', 'success');
+      loadVendorsTable();
+      populateDropdowns();
+      updateAdminInfo();
+    } catch (e) {
+      UIManager.showToast('Failed to delete vendor', 'error');
+    }
+  };
+
+  function clearVendorForm() {
+    document.getElementById('vendor-name-input').value = '';
+    document.getElementById('vendor-code-input').value = '';
+    const emailInput = document.getElementById('vendor-email-input');
+    const phoneInput = document.getElementById('vendor-phone-input');
+    const addressInput = document.getElementById('vendor-address-input');
+    
+    if (emailInput) emailInput.value = '';
+    if (phoneInput) phoneInput.value = '';
+    if (addressInput) addressInput.value = '';
+  }
+
+  function loadVendorsTable() {
+    const tbody = document.getElementById('vendors-table-body');
+    if (!tbody) return;
+    
+    const vendors = DataManager.getVendors();
+    
+    if (vendors.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--gray-500);">No vendors found</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = vendors.map(vendor => `
+      <tr>
+        <td>${vendor.id}</td>
+        <td>${vendor.name}</td>
+        <td><code>${vendor.code}</code></td>
+        <td>
+          ${vendor.email ? `<div><i class="fas fa-envelope"></i> ${vendor.email}</div>` : ''}
+          ${vendor.phone ? `<div><i class="fas fa-phone"></i> ${vendor.phone}</div>` : ''}
+          ${!vendor.email && !vendor.phone ? '<span style="color: var(--gray-400);">No contact info</span>' : ''}
+        </td>
+        <td>
+          <button class="delete-btn" onclick="deleteVendor('${vendor.id}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // Settings Management
+  window.clearAllHistory = function() {
+    if (!confirm('Are you sure you want to clear ALL scan history? This cannot be undone.')) return;
+    
+    try {
+      localStorage.removeItem('drbs_history');
+      AppState.scanHistory = [];
+      DataManager.updateHistoryDisplay();
+      DataManager.updateStatistics();
+      UIManager.showToast('All history cleared successfully', 'success');
+      updateAdminInfo();
+    } catch (e) {
+      UIManager.showToast('Failed to clear history', 'error');
+    }
+  };
+
+  window.exportAllData = function() {
+    const materials = DataManager.getMaterials();
+    const vendors = DataManager.getVendors();
+    const history = AppState.scanHistory;
+    
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      materials: materials,
+      vendors: vendors,
+      history: history,
+      statistics: AppState.statistics
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drbs_export_${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    UIManager.showToast('Data exported successfully', 'success');
+  };
+
+  window.exportToExcel = function() {
+    const history = AppState.scanHistory;
+    
+    if (!history || history.length === 0) {
+      UIManager.showToast('No history data to export', 'warning');
+      return;
+    }
+    
+    // Create Excel-compatible CSV data with BOM for proper UTF-8 encoding
+    let csvContent = 'Timestamp,Material,Barcode,Vendor,QR Data,Status\n';
+    
+    history.forEach(entry => {
+      const row = [
+        entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '',
+        entry.material ? entry.material.replace(/"/g, '""') : '',
+        entry.barcode || '',
+        entry.vendor ? entry.vendor.replace(/"/g, '""') : '',
+        entry.qrData ? `"${entry.qrData.replace(/"/g, '""')}"` : '',
+        entry.status || 'success'
+      ].join(',');
+      csvContent += row + '\n';
+    });
+    
+    // Add BOM for proper UTF-8 encoding in Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DRBS_History_${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    UIManager.showToast('History exported to Excel successfully', 'success');
+  };
+
+  window.resetToDefaults = function() {
+    if (!confirm('Are you sure you want to reset all materials and vendors to defaults? This will remove all custom data.')) return;
+    
+    try {
+      localStorage.removeItem('drbs_materials');
+      localStorage.removeItem('drbs_vendors');
+      
+      UIManager.showToast('Reset to defaults successfully', 'success');
+      loadMaterialsTable();
+      loadVendorsTable();
+      populateDropdowns();
+      updateAdminInfo();
+    } catch (e) {
+      UIManager.showToast('Failed to reset to defaults', 'error');
+    }
+  };
+
+  function updateAdminInfo() {
+    const materials = DataManager.getMaterials();
+    const vendors = DataManager.getVendors();
+    const totalScans = AppState.statistics.successfulScans + AppState.statistics.failedScans;
+    
+    const materialsCountEl = document.getElementById('admin-materials-count');
+    const vendorsCountEl = document.getElementById('admin-vendors-count');
+    const totalScansEl = document.getElementById('admin-total-scans');
+    const uptimeEl = document.getElementById('admin-uptime');
+    
+    if (materialsCountEl) materialsCountEl.textContent = materials.length;
+    if (vendorsCountEl) vendorsCountEl.textContent = vendors.length;
+    if (totalScansEl) totalScansEl.textContent = totalScans;
+    
+    if (uptimeEl) {
+      const now = new Date();
+      const elapsed = Math.floor((now - AppState.sessionStartTime) / 1000);
+      const hours = Math.floor(elapsed / 3600);
+      const minutes = Math.floor((elapsed % 3600) / 60);
+      const seconds = elapsed % 60;
+      uptimeEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+  }
+
+  // Close admin panel on escape key or outside click
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const adminModal = document.getElementById('admin-modal');
+      if (adminModal && adminModal.style.display === 'flex') {
+        closeAdminPanel();
+      }
+    }
+  });
+
+  document.addEventListener('click', function(e) {
+    const adminModal = document.getElementById('admin-modal');
+    const adminOverlay = document.querySelector('.admin-overlay');
+    if (adminModal && adminOverlay && e.target === adminOverlay) {
+      closeAdminPanel();
+    }
+  });
+
+})();
