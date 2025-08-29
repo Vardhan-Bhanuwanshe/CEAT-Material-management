@@ -3,133 +3,793 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DRBS</title>
+    <title>DRBS - Material Management System</title>
     <link rel="icon" type="image/jpeg" href="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg">
     
     <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-logo">
-                <img src="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg" alt="DRBS Logo" class="logo-image">
-                <div class="logo-text">DRBS</div>
+    <!-- System Loading Overlay -->
+    <div class="system-loading" id="system-loading">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <i class="fas fa-cog fa-spin"></i>
             </div>
-            <h1>DIPPED ROLL BARCODE SYSTEM</h1>
-            <h2>4 ROLL CALENDER</h2>
-            <p>Select material and scan barcode for verification</p>
-            <button id="admin-toggle-btn" class="admin-btn admin-login" title="Admin Login">🔑</button>
-        </div>
-        
-        <!-- Global error container -->
-        <div id="error-container" class="error-container" aria-live="polite"></div>
-        
-        <div class="content">
-            <div class="section" id="material-section">
-                <h2>📦 Material Selection</h2>
-                <label for="material-select">Select Material:</label>
-                <select id="material-select" required aria-describedby="material-help">
-                    <option value="">-- Select Material --</option>
-                    <!-- Options will be populated by JavaScript -->
-                </select>
-                <div id="material-help" class="help-text">Choose a material to begin scanning</div>
-                <div id="expected-barcode" style="display:none;">
-                    Expected Barcode: <span id="expected-code"></span>
-                </div>
-            </div>
-
-            <div class="section" id="scan-section" style="display:none;">
-                <h2>📱 USB Barcode Scanner</h2>
-                <p class="scan-instruction">Scan a barcode with your USB barcode scanner. Make sure this window is in focus and scan the barcode.</p>
-                <input type="text" id="barcode-input" placeholder="Focus here and scan barcode..." style="width: 100%; padding: 10px; font-size: 16px; border: 2px solid #ddd; border-radius: 5px;">
-                <div id="scan-help" class="help-text">Click in the input field above and scan your barcode</div>
-                <div id="validation-errors" class="validation-errors" style="display:none;" role="alert"></div>
-            </div>
-
-            <div id="result" aria-live="polite" role="status"></div>
-
-            <div class="section">
-                <h2>📋 Scan History</h2>
-
-                <!-- Enhanced History Controls -->
-                <div class="history-controls">
-                    <div class="controls-row buttons-row">
-                        <button id="export-excel" type="button">📈 Export Excel</button>
-                        <button id="analyze-history" type="button">📊 Analyze</button>
-                    </div>
-                </div>
-
-                <!-- Analytics Panel -->
-                <div id="history-analytics" class="analytics-panel"></div>
-
-                <!-- History List -->
-                <ul id="scan-history" aria-label="Scan history list"></ul>
-                <button id="load-more-history" type="button" style="display: none;">Load More</button>
+            <h3>DRBS System</h3>
+            <p>Initializing Material Management...</p>
+            <div class="loading-progress">
+                <div class="progress-bar" id="loading-progress"></div>
             </div>
         </div>
     </div>
 
-    <!-- Footer Section -->
-    <footer class="footer">
-        <div class="footer-content">
-            <div class="footer-section" style="display: none;">
-                <h4>Material Management</h4>
-                <div class="footer-material-controls">
-                    <div class="footer-input-row">
-                        <input 
-                            id="add-material-name" 
-                            type="text" 
-                            placeholder="Material Name" 
-                            maxlength="50"
-                            required
-                        >
-                        <input 
-                            id="add-material-barcode" 
-                            type="text" 
-                            placeholder="Barcode" 
-                            pattern="[a-zA-Z0-9]{3,20}"
-                            maxlength="20"
-                            required
-                        >
-                    </div>
-                    <div class="footer-button-row">
-                        <button id="add-material-btn" type="button" class="footer-add-btn">➕ Add Material</button>
-                        <button id="delete-material-btn" type="button" class="footer-delete-btn">🗑️ Delete Selected</button>
-                    </div>
-                    <div id="material-validation" class="validation-message" style="display: none;"></div>
+    <!-- Modern Header -->
+    <header class="modern-header fade-in">
+        <div class="header-container">
+            <div class="header-brand">
+                <img src="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg" alt="DRBS" class="brand-logo">
+                <div class="brand-text">
+                    <h1>DRBS</h1>
+                    <span>Material Management</span>
                 </div>
             </div>
             
-            <div class="footer-section" style="display: none;">
-                <h4>Admin Actions</h4>
-                <div class="footer-actions">
-                    <button id="clear-history" type="button" class="footer-action-btn">
-                        🗑️ Clear History
+            <div class="header-actions">
+                <button class="admin-btn" onclick="openAdminPanel()" title="Admin Panel">
+                    <i class="fas fa-cog"></i>
+                    <span>Admin</span>
+                </button>
+            </div>
+            
+            <div class="header-status">
+                <div class="status-item system-ready" id="system-status">
+                    <i class="fas fa-circle status-ready pulse"></i>
+                    <span>Ready</span>
+                </div>
+                <div class="current-time" id="current-time">00:00:00</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- App Layout Container -->
+    <div class="app-layout">
+        <!-- Left Sidebar Dashboard -->
+        <aside class="sidebar-dashboard">
+            <div class="dashboard-header">
+                <h3><i class="fas fa-chart-line"></i> Dashboard</h3>
+                <div class="dashboard-time" id="dashboard-time">00:00:00</div>
+            </div>
+            
+            <!-- Real-time Metrics -->
+            <div class="metrics-section">
+                <h4>Today's Metrics</h4>
+                <div class="metric-cards">
+                    <div class="metric-card total">
+                        <div class="metric-icon">
+                            <i class="fas fa-qrcode"></i>
+                        </div>
+                        <div class="metric-info">
+                            <div class="metric-value" id="total-scans">0</div>
+                            <div class="metric-label">Total Scans</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card success">
+                        <div class="metric-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="metric-info">
+                            <div class="metric-value" id="successful-scans-metric">0</div>
+                            <div class="metric-label">Successful</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card error">
+                        <div class="metric-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="metric-info">
+                            <div class="metric-value" id="error-scans-metric">0</div>
+                            <div class="metric-label">Errors</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card accuracy">
+                        <div class="metric-icon">
+                            <i class="fas fa-bullseye"></i>
+                        </div>
+                        <div class="metric-info">
+                            <div class="metric-value" id="accuracy-metric">100%</div>
+                            <div class="metric-label">Accuracy</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Status -->
+            <div class="stats-section">
+                <h4>System Status</h4>
+                <div class="stat-items">
+                    <div class="stat-item">
+                        <span class="stat-icon"><i class="fas fa-clock"></i></span>
+                        <div class="stat-details">
+                            <span class="stat-title">Session Time</span>
+                            <span class="stat-value" id="sidebar-session-time">00:00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-item">
+                        <span class="stat-icon"><i class="fas fa-box"></i></span>
+                        <div class="stat-details">
+                            <span class="stat-title">Materials</span>
+                            <span class="stat-value" id="materials-count">5</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-item">
+                        <span class="stat-icon"><i class="fas fa-truck"></i></span>
+                        <div class="stat-details">
+                            <span class="stat-title">Vendors</span>
+                            <span class="stat-value" id="vendors-count">5</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-item">
+                        <span class="stat-icon"><i class="fas fa-history"></i></span>
+                        <div class="stat-details">
+                            <span class="stat-title">Total History</span>
+                            <span class="stat-value" id="history-count">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="quick-actions-section">
+                <h4>Quick Actions</h4>
+                <div class="quick-actions">
+                    <button class="quick-action-btn" onclick="exportHistoryCSV()" title="Export scan history">
+                        <i class="fas fa-download"></i>
+                        <span>Export</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="openAdminPanel()" title="Open admin panel">
+                        <i class="fas fa-cog"></i>
+                        <span>Admin</span>
                     </button>
                 </div>
             </div>
+            
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Two-Part Layout -->
+            <div class="two-part-layout slide-up">
+                <div class="workflow-header">
+                    <h2>Production Line Control</h2>
+                    <p>4 Roll Calender Material Processing</p>
+                </div>
+
+                <div class="section-container">
+                    <!-- Material Section (Left) -->
+                    <div class="material-section fade-in">
+                        <div class="section-header">
+                            <h3><i class="fas fa-box"></i> Material Section</h3>
+                            <p>Select material and scan barcode</p>
+                        </div>
+
+                        <!-- Step 1: Material Selection -->
+                        <div class="workflow-step active" id="step-1">
+                            <div class="step-header">
+                                <div class="step-number">1</div>
+                                <div class="step-info">
+                                    <h3>Select Material</h3>
+                                    <p>Choose the material you want to scan</p>
+                                </div>
+                                <div class="step-status" id="step-1-status">
+                                    <i class="fas fa-circle-dot"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="step-content">
+                                <div class="form-group">
+                                    <label>Material Type</label>
+                                    <select id="material-select" class="modern-select" onchange="handleMaterialSelection()">
+                                        <option value="">Choose material...</option>
+                                    </select>
+                                </div>
+                                <div class="selected-material" id="selected-material" style="display: none;">
+                                    <div class="material-card">
+                                        <div class="material-info">
+                                            <strong id="material-name">Material Name</strong>
+                                            <span id="material-barcode">Expected Barcode</span>
+                                        </div>
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Barcode Scan -->
+                        <div class="workflow-step" id="step-2">
+                            <div class="step-header">
+                                <div class="step-number">2</div>
+                                <div class="step-info">
+                                    <h3>Auto Scan Barcode</h3>
+                                    <p>Automatic barcode scanning in progress</p>
+                                </div>
+                                <div class="step-status" id="step-2-status">
+                                    <i class="fas fa-circle"></i>
+                                </div>
+                            </div>
+                    
+                            <div class="step-content">
+                                <div class="auto-scan-area" id="auto-scan-area">
+                                    <div class="scan-placeholder">
+                                        <i class="fas fa-barcode"></i>
+                                        <span>Select material to start automatic scanning</span>
+                                    </div>
+                                </div>
+                                <div class="scan-instructions" id="scan-instructions" style="display: none;">
+                                    <div class="instruction-card">
+                                        <i class="fas fa-bullseye"></i>
+                                        <div class="instruction-text">
+                                            <strong>Scanner Ready</strong>
+                                            <p>Position the barcode under the scanner and scan</p>
+                                        </div>
+                                        <div class="scan-animation">
+                                            <div class="scan-line"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vendor Section (Right) -->
+                    <div class="vendor-section fade-in">
+                        <div class="section-header">
+                            <h3><i class="fas fa-truck"></i> Vendor Section</h3>
+                            <p>Select vendor and scan QR code</p>
+                        </div>
+
+                        <!-- Step 3: Vendor Selection -->
+                        <div class="workflow-step" id="step-3">
+                            <div class="step-header">
+                                <div class="step-number">3</div>
+                                <div class="step-info">
+                                    <h3>Select Vendor</h3>
+                                    <p>Choose vendor for tracking</p>
+                                </div>
+                                <div class="step-status" id="step-3-status">
+                                    <i class="fas fa-circle"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="step-content">
+                                <div class="form-group">
+                                    <label>Vendor</label>
+                                    <select id="vendor-select" class="modern-select" onchange="handleVendorSelection()" disabled>
+                                        <option value="">Choose vendor...</option>
+                                    </select>
+                                </div>
+                                <div class="selected-vendor" id="selected-vendor" style="display: none;">
+                                    <div class="vendor-card">
+                                        <div class="vendor-info">
+                                            <strong id="vendor-name">Vendor Name</strong>
+                                            <span id="vendor-code">Vendor Code</span>
+                                        </div>
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: QR Code -->
+                        <div class="workflow-step" id="step-4">
+                            <div class="step-header">
+                                <div class="step-number">4</div>
+                                <div class="step-info">
+                                    <h3>Scan QR Code</h3>
+                                    <p>Scan the generated QR code</p>
+                                </div>
+                                <div class="step-status" id="step-4-status">
+                                    <i class="fas fa-circle"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="step-content">
+                                <div class="qr-display" id="qr-display">
+                                    <div class="qr-placeholder">
+                                        <i class="fas fa-qrcode"></i>
+                                        <span>Complete previous steps</span>
+                                    </div>
+                                </div>
+                                <div class="qr-actions" id="qr-actions" style="display: none;">
+                                    <button class="action-btn secondary" onclick="copyQRData()">
+                                        <i class="fas fa-copy"></i>
+                                        Copy
+                                    </button>
+                                    <button class="action-btn" onclick="showFullscreenQR()">
+                                        <i class="fas fa-expand"></i>
+                                        View Full
+                                    </button>
+                                    <button class="action-btn" onclick="startQRScanning()" style="background: var(--warning-color);">
+                                        <i class="fas fa-qrcode"></i>
+                                        Scan QR Code
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        <!-- Scan History -->
+        <div class="history-section">
+            <div class="history-header">
+                <h3>Scan History</h3>
+                <button class="action-btn" onclick="exportHistoryCSV()" title="Export history as CSV">
+                    <i class="fas fa-file-export"></i>
+                    Export CSV
+                </button>
+            </div>
+            <div class="history-container">
+                <table class="history-table" id="history-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Material</th>
+                            <th>Barcode</th>
+                            <th>Vendor</th>
+                            <th>QR Code Data</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body">
+                        <tr class="empty-state">
+                            <td colspan="6">
+                                <div class="empty-message">
+                                    <i class="fas fa-inbox"></i>
+                                    <span>No scans yet. Start scanning to see history.</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        
-        <div class="footer-bottom">
-            <div class="footer-bottom-content">
-                <p>&copy; 2024 Material Scanner</p>
-                <div class="footer-stats">
-                    <span id="footer-scan-count">Total Scans: 0</span>
-                    <span id="footer-material-count">Materials: 3</span>
+        </main>
+    </div>
+
+    <!-- Hidden Scanner Input -->
+    <input type="text" id="barcode-input" class="scanner-input" style="position: absolute; left: -9999px; opacity: 0;" autocomplete="off">
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Custom Alert Modal -->
+    <div class="alert-overlay" id="alert-overlay" style="display: none;">
+        <div class="alert-modal" id="alert-modal">
+            <div class="alert-header" id="alert-header">
+                <div class="alert-icon" id="alert-icon">
+                    <i class="fas fa-times-circle"></i>
+                </div>
+                <h3 id="alert-title">Alert</h3>
+            </div>
+            <div class="alert-body">
+                <p id="alert-message">Alert message</p>
+                <div class="alert-details" id="alert-details" style="display: none;">
+                    <div class="detail-row">
+                        <span class="detail-label">Expected:</span>
+                        <span class="detail-value" id="expected-barcode">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Scanned:</span>
+                        <span class="detail-value" id="scanned-barcode">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="alert-actions">
+                <button class="alert-btn secondary" onclick="closeAlert()">
+                    <i class="fas fa-times"></i>
+                    Close
+                </button>
+                <button class="alert-btn primary" id="reset-btn" onclick="resetAndRecord()">
+                    <i class="fas fa-redo"></i>
+                    Reset & Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Fullscreen Modal -->
+    <div class="qr-fullscreen-modal" id="qr-fullscreen-modal" style="display: none;">
+        <div class="qr-fullscreen-overlay">
+            <div class="qr-fullscreen-content">
+                <div class="qr-fullscreen-header">
+                    <h3><i class="fas fa-qrcode"></i> QR Code Data</h3>
+                    <button class="qr-fullscreen-close" onclick="closeFullscreenQR()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="qr-fullscreen-body">
+                    <div class="qr-fullscreen-display" id="qr-fullscreen-display">
+                        <!-- QR data will be displayed here -->
+                    </div>
+                    <div class="qr-fullscreen-actions">
+                        <button class="qr-fullscreen-btn" onclick="copyFullscreenQR()">
+                            <i class="fas fa-copy"></i>
+                            Copy QR Data
+                        </button>
+                        <button class="qr-fullscreen-btn secondary" onclick="selectFullscreenQRText()">
+                            <i class="fas fa-mouse-pointer"></i>
+                            Select All
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </footer>
+    </div>
 
-    <audio id="success-sound" preload="auto" aria-hidden="true">
-        <source src="success.mp3" type="audio/mpeg">
-        <source src="success.wav" type="audio/wav">
-    </audio>
-    <audio id="error-sound" preload="auto" aria-hidden="true">
-        <source src="error.mp3" type="audio/mpeg">
-        <source src="error.wav" type="audio/wav">
-    </audio>
+    <!-- Admin Panel Modal -->
+    <div class="admin-modal" id="admin-modal" style="display: none;">
+        <div class="admin-overlay">
+            <div class="admin-panel">
+                <div class="admin-header">
+                    <h2><i class="fas fa-shield-alt"></i> Admin Panel</h2>
+                    <button class="admin-close" onclick="closeAdminPanel()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="admin-content">
+                    <div class="admin-tabs">
+                        <button class="admin-tab active" onclick="showAdminSection('materials')">
+                            <i class="fas fa-box"></i>
+                            Materials
+                            <span class="tab-badge" id="materials-count-badge">0</span>
+                        </button>
+                        <button class="admin-tab" onclick="showAdminSection('vendors')">
+                            <i class="fas fa-truck"></i>
+                            Vendors
+                            <span class="tab-badge" id="vendors-count-badge">0</span>
+                        </button>
+                        <button class="admin-tab" onclick="showAdminSection('settings')">
+                            <i class="fas fa-cogs"></i>
+                            Settings
+                        </button>
+                    </div>
+                    
+                    <!-- Materials Section -->
+                    <div class="admin-section active" id="admin-materials">
+                        <div class="section-header">
+                            <h3>Manage Materials</h3>
+                            <div class="header-actions">
+                                <div class="search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="materials-search" placeholder="Search materials..." oninput="filterMaterials()">
+                                </div>
+                                <button class="btn-primary" onclick="showAddMaterialForm()">
+                                    <i class="fas fa-plus"></i>
+                                    Add Material
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="add-form" id="add-material-form" style="display: none;">
+                            <h4>Add New Material</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="material-name-input">Material Name:</label>
+                                    <input type="text" id="material-name-input" placeholder="Enter material name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="material-barcode-input">Barcode:</label>
+                                    <input type="text" id="material-barcode-input" placeholder="Enter barcode" required>
+                                    <button type="button" class="barcode-generate-btn" onclick="generateBarcode()">
+                                        <i class="fas fa-magic"></i>
+                                        Generate
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="material-category-input">Category:</label>
+                                    <select id="material-category-input">
+                                        <option value="">Select category</option>
+                                        <option value="Metal">Metal</option>
+                                        <option value="Plastic">Plastic</option>
+                                        <option value="Chemical">Chemical</option>
+                                        <option value="Electronic">Electronic</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="material-description-input">Description:</label>
+                                    <input type="text" id="material-description-input" placeholder="Optional description">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn-secondary" onclick="hideAddMaterialForm()">Cancel</button>
+                                <button class="btn-primary" onclick="addMaterial()">Add Material</button>
+                            </div>
+                        </div>
+                        
+                        <div class="data-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Barcode</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="materials-table-body">
+                                    <!-- Materials will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Vendors Section -->
+                    <div class="admin-section" id="admin-vendors" style="display: none;">
+                        <div class="section-header">
+                            <h3>Manage Vendors</h3>
+                            <div class="header-actions">
+                                <div class="search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="vendors-search" placeholder="Search vendors..." oninput="filterVendors()">
+                                </div>
+                                <button class="btn-primary" onclick="showAddVendorForm()">
+                                    <i class="fas fa-plus"></i>
+                                    Add Vendor
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="add-form" id="add-vendor-form" style="display: none;">
+                            <h4>Add New Vendor</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="vendor-name-input">Vendor Name:</label>
+                                    <input type="text" id="vendor-name-input" placeholder="Enter vendor name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="vendor-code-input">Vendor Code:</label>
+                                    <input type="text" id="vendor-code-input" placeholder="Enter vendor code" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="vendor-email-input">Contact Email:</label>
+                                    <input type="email" id="vendor-email-input" placeholder="vendor@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vendor-phone-input">Phone Number:</label>
+                                    <input type="text" id="vendor-phone-input" placeholder="+1 (555) 123-4567">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="vendor-address-input">Address:</label>
+                                    <input type="text" id="vendor-address-input" placeholder="Enter vendor address">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn-secondary" onclick="hideAddVendorForm()">Cancel</button>
+                                <button class="btn-primary" onclick="addVendor()">Add Vendor</button>
+                            </div>
+                        </div>
+                        
+                        <div class="data-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Code</th>
+                                        <th>Contact</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vendors-table-body">
+                                    <!-- Vendors will be populated here -->
+                                </tbody>
+                            </table>
+                    </div>
+                    
+                    <!-- Settings Section -->
+                    <div class="admin-section" id="admin-settings" style="display: none;">
+                        <div class="section-header">
+                            <h3>System Settings</h3>
+                        </div>
+                        
+                        <div class="settings-group">
+                            <h4><i class="fas fa-database"></i> Data Management</h4>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Clear Scan History</label>
+                                    <span class="setting-description">Remove all scan history records permanently</span>
+                                </div>
+                                <button class="btn-danger" onclick="clearAllHistory()">
+                                    <i class="fas fa-trash-alt"></i>
+                                    Clear History
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Print History Report</label>
+                                    <span class="setting-description">Generate printable report with complete scan history</span>
+                                </div>
+                                <button class="btn-secondary" onclick="printHistoryReport()">
+                                    <i class="fas fa-print"></i>
+                                    Print Report
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Export to Excel</label>
+                                    <span class="setting-description">Download scan history as Excel-compatible CSV file</span>
+                                </div>
+                                <button class="btn-success" onclick="exportToExcel()">
+                                    <i class="fas fa-file-excel"></i>
+                                    Export Excel
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Backup All Data</label>
+                                    <span class="setting-description">Create complete system backup (JSON format)</span>
+                                </div>
+                                <button class="btn-primary" onclick="exportAllData()">
+                                    <i class="fas fa-download"></i>
+                                    Backup Data
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Import Data</label>
+                                    <span class="setting-description">Restore system from backup file</span>
+                                </div>
+                                <input type="file" id="import-file-input" accept=".json" style="display: none;" onchange="importBackupData()">
+                                <button class="btn-info" onclick="document.getElementById('import-file-input').click()">
+                                    <i class="fas fa-upload"></i>
+                                    Import Backup
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-group">
+                            <h4><i class="fas fa-tools"></i> System Maintenance</h4>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Clear Browser Cache</label>
+                                    <span class="setting-description">Clear all stored data and refresh the application</span>
+                                </div>
+                                <button class="btn-warning" onclick="clearSystemCache()">
+                                    <i class="fas fa-broom"></i>
+                                    Clear Cache
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Reset to Factory Defaults</label>
+                                    <span class="setting-description">Reset all settings, materials, and vendors to original state</span>
+                                </div>
+                                <button class="btn-danger" onclick="resetToDefaults()">
+                                    <i class="fas fa-redo-alt"></i>
+                                    Factory Reset
+                                </button>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>System Diagnostics</label>
+                                    <span class="setting-description">Run system health check and display diagnostics</span>
+                                </div>
+                                <button class="btn-info" onclick="runSystemDiagnostics()">
+                                    <i class="fas fa-stethoscope"></i>
+                                    Run Diagnostics
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-group">
+                            <h4><i class="fas fa-cog"></i> Application Settings</h4>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Auto-Save Interval</label>
+                                    <span class="setting-description">How often to automatically save data (minutes)</span>
+                                </div>
+                                <select id="autosave-interval" class="setting-select" onchange="updateAutoSaveInterval()">
+                                    <option value="1">1 minute</option>
+                                    <option value="5" selected>5 minutes</option>
+                                    <option value="10">10 minutes</option>
+                                    <option value="30">30 minutes</option>
+                                    <option value="0">Disabled</option>
+                                </select>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Sound Notifications</label>
+                                    <span class="setting-description">Enable audio feedback for scanning operations</span>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="sound-enabled" checked onchange="toggleSoundNotifications()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label>Session Timeout</label>
+                                    <span class="setting-description">Auto-logout after inactivity (minutes)</span>
+                                </div>
+                                <select id="session-timeout" class="setting-select" onchange="updateSessionTimeout()">
+                                    <option value="15">15 minutes</option>
+                                    <option value="30" selected>30 minutes</option>
+                                    <option value="60">1 hour</option>
+                                    <option value="120">2 hours</option>
+                                    <option value="0">Never</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-group">
+                            <h4><i class="fas fa-chart-bar"></i> System Information</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Total Materials:</span>
+                                    <span class="info-value" id="admin-materials-count">0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Total Vendors:</span>
+                                    <span class="info-value" id="admin-vendors-count">0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Total Scans:</span>
+                                    <span class="info-value" id="admin-total-scans">0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Success Rate:</span>
+                                    <span class="info-value" id="admin-success-rate">100%</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Last Backup:</span>
+                                    <span class="info-value" id="admin-last-backup">Never</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">System Status:</span>
+                                    <span class="info-value status-online" id="admin-system-status">Online</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Database Size:</span>
+                                    <span class="info-value" id="admin-db-size">Calculating...</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Version:</span>
+                                    <span class="info-value">DRBS v2.0.1</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script src="script.js"></script>
 </body>
 </html>
+
