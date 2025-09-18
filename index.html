@@ -6,7 +6,7 @@
     <title>DRBS - Material Management System</title>
     <link rel="icon" type="image/jpeg" href="WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg">
     
-    <link rel="stylesheet" href="styles-modern.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -178,6 +178,44 @@
                     <p>Two Independent Sections - Material & Vendor</p>
                 </div>
 
+                <!-- LETOFF Selection -->
+                <div class="letoff-selection">
+                    <div class="letoff-header">
+                        <h3><i class="fas fa-list-alt"></i> LETOFF Selection</h3>
+                        <p>Select the production line option before proceeding</p>
+                    </div>
+                    <div class="letoff-options">
+                        <div class="letoff-option" data-letoff="A">
+                            <input type="radio" id="letoff-a" name="letoff" value="A">
+                            <label for="letoff-a">
+                                <div class="option-content">
+                                    <div class="option-letter">A</div>
+                                    <div class="option-details">
+                                        <span class="option-title">Production Line A</span>
+                                        <span class="option-desc">Standard production workflow</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        <div class="letoff-option" data-letoff="B">
+                            <input type="radio" id="letoff-b" name="letoff" value="B">
+                            <label for="letoff-b">
+                                <div class="option-content">
+                                    <div class="option-letter">B</div>
+                                    <div class="option-details">
+                                        <span class="option-title">Production Line B</span>
+                                        <span class="option-desc">Alternative production workflow</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="letoff-status" id="letoff-status">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Please select a LETOFF option to continue</span>
+                    </div>
+                </div>
+
                 <div class="section-container">
                     <!-- Material Section (Left) - Independent -->
                     <div class="material-section fade-in">
@@ -209,8 +247,7 @@
                                 <div class="selected-material" id="selected-material" style="display: none;">
                                     <div class="material-card">
                                         <div class="material-info">
-                                            <strong id="material-name">Material Name</strong>
-                                            <span id="material-barcode">Expected Barcode</span>
+                                            <strong id="material-barcode">Expected Barcode</strong>
                                         </div>
                                         <i class="fas fa-check-circle"></i>
                                     </div>
@@ -268,7 +305,7 @@
                         <!-- Step 1: Vendor Selection -->
                         <div class="workflow-step active" id="vendor-step-1">
                             <div class="step-header">
-                                <div class="step-number">1</div>
+                                <div class="step-number">3</div>
                                 <div class="step-info">
                                     <h3>Select Vendor</h3>
                                     <p>Choose vendor for tracking</p>
@@ -300,9 +337,9 @@
                         <!-- Step 2: QR Code Scan -->
                         <div class="workflow-step" id="vendor-step-2">
                             <div class="step-header">
-                                <div class="step-number">2</div>
+                                <div class="step-number">4</div>
                                 <div class="step-info">
-                                    <h3>Scan QR Code</h3>
+                                    <h3>Scan ROLL NO. QR Code</h3>
                                     <p>After selecting a vendor, scan their QR code to record it</p>
                                 </div>
                                 <div class="step-status" id="vendor-step-2-status">
@@ -326,10 +363,6 @@
                                     <div class="data-content" id="qr-data-content"></div>
                                     <div class="data-info" id="qr-data-info"></div>
                                 </div>
-                                <button class="action-btn" id="vendor-reset-btn" onclick="resetVendorSection()" style="display: none; margin-top: 1rem;">
-                                    <i class="fas fa-redo"></i>
-                                    Reset Vendor Section
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -367,6 +400,7 @@
                         <thead>
                             <tr>
                                 <th onclick="sortHistory('timestamp')">Time <i class="fas fa-sort sort-icon"></i></th>
+                                <th onclick="sortHistory('letoff')">LETOFF <i class="fas fa-sort sort-icon"></i></th>
                                 <th onclick="sortHistory('materialName')">Material <i class="fas fa-sort sort-icon"></i></th>
                                 <th onclick="sortHistory('scannedBarcode')">Barcode <i class="fas fa-sort sort-icon"></i></th>
                                 <th onclick="sortHistory('vendorName')">Vendor <i class="fas fa-sort sort-icon"></i></th>
@@ -376,7 +410,7 @@
                         </thead>
                         <tbody id="history-body">
                             <tr class="empty-state">
-                                <td colspan="6">
+                                <td colspan="7">
                                     <div class="empty-message">
                                         <i class="fas fa-inbox"></i>
                                         <span>No scans yet. Start scanning to see history.</span>
@@ -400,40 +434,6 @@
 
     <!-- Hidden Scanner Input -->
     <input type="text" id="barcode-input" class="scanner-input" style="position: absolute; left: -9999px; opacity: 0;" autocomplete="off">
-
-    <!-- Toast Notifications -->
-    <div class="toast-container" id="toast-container"></div>
-
-    <!-- Custom Alert Modal -->
-    <div class="alert-overlay" id="alert-overlay" style="display: none;">
-        <div class="alert-modal" id="alert-modal">
-            <div class="alert-header" id="alert-header">
-                <div class="alert-icon" id="alert-icon">
-                    <i class="fas fa-times-circle"></i>
-                </div>
-                <h3 id="alert-title">Wrong Material Detected</h3>
-            </div>
-            <div class="alert-body">
-                <p id="alert-message">The scanned barcode does not match the selected material.</p>
-                <div class="alert-details" id="alert-details" style="display: none;">
-                    <div class="detail-row">
-                        <span class="detail-label">Expected:</span>
-                        <span class="detail-value" id="expected-barcode">-</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Scanned:</span>
-                        <span class="detail-value" id="scanned-barcode">-</span>
-                    </div>
-                </div>
-            </div>
-            <div class="alert-actions">
-                <button class="alert-btn primary" id="reset-btn" onclick="resetAndRecord()">
-                    <i class="fas fa-redo"></i>
-                    Reset & Continue
-                </button>
-            </div>
-        </div>
-    </div>
 
     <!-- QR Code Fullscreen Modal -->
     <div class="qr-fullscreen-modal" id="qr-fullscreen-modal" style="display: none;">
@@ -674,6 +674,37 @@
                 <button class="alert-btn primary" onclick="changePassword()">
                     <i class="fas fa-save"></i>
                     Save Password
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div class="alert-overlay" id="alert-overlay" style="display: none;">
+        <div class="alert-modal" id="alert-modal">
+            <div class="alert-header" id="alert-header">
+                <div class="alert-icon" id="alert-icon">
+                    <i class="fas fa-times-circle"></i>
+                </div>
+                <h3 id="alert-title">Wrong Material Detected</h3>
+            </div>
+            <div class="alert-body">
+                <p id="alert-message">The scanned barcode does not match the selected material.</p>
+                <div class="alert-details" id="alert-details" style="display: none;">
+                    <div class="detail-row">
+                        <span class="detail-label">Expected:</span>
+                        <span class="detail-value" id="expected-barcode">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Scanned:</span>
+                        <span class="detail-value" id="scanned-barcode">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="alert-actions">
+                <button class="alert-btn primary" id="reset-btn" onclick="resetAndRecord()">
+                    <i class="fas fa-redo"></i>
+                    Reset & Continue
                 </button>
             </div>
         </div>
