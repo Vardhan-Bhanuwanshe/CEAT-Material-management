@@ -1,4 +1,4 @@
-// Password Change Modal Functions
+  // Password Change Modal Functions
   window.showPasswordChangeModal = function() {
     const modal = document.getElementById('password-modal');
     if (!modal) return;
@@ -65,102 +65,9 @@
     if (text) text.textContent = 'Password strength: ' + labels[score];
   }
 
-  // Notification Panel Functions
-  window.closeNotificationPanel = function() {
-    const panel = document.getElementById('notification-panel');
-    if (!panel) return;
-    
-    panel.classList.add('closing');
-    setTimeout(() => {
-      panel.style.display = 'none';
-      panel.classList.remove('closing');
-    }, 300);
-    
-    // Store the user's choice to hide the panel
-    localStorage.setItem('drbs_notification_panel_dismissed', 'true');
-    
-    if (typeof UIManager !== 'undefined' && UIManager.showToast) {
-      UIManager.showToast('Notification panel closed', 'info');
-    }
-  };
-
-  window.allowNotifications = function() {
-    // Request browser notification permission
-    if ('Notification' in window) {
-      Notification.requestPermission().then(function(permission) {
-        if (permission === 'granted') {
-          showNotificationStatus('Notifications enabled successfully', 'success');
-          localStorage.setItem('drbs_notifications_allowed', 'true');
-          
-          // Show a test notification
-          setTimeout(() => {
-            new Notification('DRBS System', {
-              body: 'Notifications are now enabled for scan updates and alerts.',
-              icon: 'WhatsApp Image 2025-07-16 at 18.43.08_e620a80e.jpg'
-            });
-          }, 500);
-        } else {
-          showNotificationStatus('Notification permission denied', 'error');
-          localStorage.setItem('drbs_notifications_allowed', 'false');
-        }
-      });
-    } else {
-      showNotificationStatus('Notifications not supported in this browser', 'warning');
-      localStorage.setItem('drbs_notifications_allowed', 'false');
-    }
-  };
-
-  window.denyNotifications = function() {
-    showNotificationStatus('Notifications disabled', 'info');
-    localStorage.setItem('drbs_notifications_allowed', 'false');
-  };
-
-  function showNotificationStatus(message, type) {
-    const statusDiv = document.getElementById('notification-status');
-    const statusText = document.getElementById('notification-status-text');
-    
-    if (statusDiv && statusText) {
-      statusText.textContent = message;
-      statusDiv.style.display = 'block';
-      
-      // Update styling based on type
-      statusDiv.className = 'notification-status';
-      if (type === 'error') {
-        statusDiv.style.background = '#fef2f2';
-        statusDiv.style.borderColor = '#ef4444';
-        statusDiv.style.color = '#dc2626';
-      } else if (type === 'warning') {
-        statusDiv.style.background = '#fffbeb';
-        statusDiv.style.borderColor = '#f59e0b';
-        statusDiv.style.color = '#d97706';
-      } else if (type === 'success') {
-        statusDiv.style.background = '#ecfdf5';
-        statusDiv.style.borderColor = '#10b981';
-        statusDiv.style.color = '#059669';
-      } else {
-        statusDiv.style.background = '#f0f9ff';
-        statusDiv.style.borderColor = '#3b82f6';
-        statusDiv.style.color = '#2563eb';
-      }
-      
-      // Auto-hide after 3 seconds
-      setTimeout(() => {
-        if (statusDiv) {
-          statusDiv.style.display = 'none';
-        }
-      }, 3000);
-    }
-    
-    // Also show toast if available
-    if (typeof UIManager !== 'undefined' && UIManager.showToast) {
-      UIManager.showToast(message, type);
-    }
-  }
-
   // Admin System Management Functions
   window.updateSystemStats = function() {
-    // System stats UI elements have been removed and replaced with notification panel
-    // This function is kept for compatibility but no longer updates stats display
+    // This function is kept for compatibility
     
     const totalRecords = AppState.scanHistory ? AppState.scanHistory.length : 0;
     const successRecords = AppState.scanHistory ? AppState.scanHistory.filter(entry => entry.status === 'success').length : 0;
@@ -510,6 +417,7 @@
     selectedMaterial: null,
     scannedBarcode: null,
     selectedVendor: null,
+    selectedLetoff: null,
     qrData: null,
     qrScanned: false,
     vendorQRWaiting: false,
@@ -684,7 +592,9 @@
       const data = AppState.workflowState.workflowData;
       const entry = {
         id: Date.now().toString(),
-        timestamp: new Date().toLocaleString(),
+        timestamp: new Date().toISOString(),
+        // LETOFF Selection
+        letoff: AppState.selectedLetoff || 'N/A',
         // Step 1 & 2: Material and Barcode
         materialName: data.materialName,
         expectedBarcode: data.materialBarcode,
@@ -876,7 +786,7 @@
       if (AppState.scanHistory.length === 0) {
         tbody.innerHTML = `
           <tr class="empty-state">
-            <td colspan="6">
+            <td colspan="7">
               <div class="empty-message">
                 <i class="fas fa-inbox"></i>
                 <p>No scans yet</p>
@@ -897,7 +807,7 @@
       if (paginatedHistory.length === 0) {
         tbody.innerHTML = `
           <tr class="empty-state">
-            <td colspan="6">
+            <td colspan="7">
               <div class="empty-message">
                 <i class="fas fa-search"></i>
                 <p>No matching records</p>
@@ -916,6 +826,9 @@
               <span class="date">${this.formatDate(entry.timestamp)}</span>
               <span class="time">${this.formatTime(entry.timestamp)}</span>
             </div>
+          </td>
+          <td class="letoff-cell">
+            <span class="letoff-value">${entry.letoff || 'N/A'}</span>
           </td>
           <td class="material-cell">
             <div class="material-info">
@@ -1109,35 +1022,35 @@
 
     formatDate(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleDateString();
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
     },
 
     formatTime(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleTimeString();
+      if (isNaN(date.getTime())) {
+        return 'Invalid Time';
+      }
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
     }
   };
 
   // UI Manager
   const UIManager = {
     showToast(message, type = 'info') {
-      const container = document.getElementById('toast-container');
-      if (!container) return;
-
-      const toast = document.createElement('div');
-      toast.className = `toast ${type}`;
-      toast.innerHTML = `
-        <div class="toast-content">
-          <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'times-circle' : 'info-circle'}"></i>
-          <span>${message}</span>
-        </div>
-        <button class="toast-close" onclick="this.parentElement.remove()">
-          <i class="fas fa-times"></i>
-        </button>
-      `;
-
-      container.appendChild(toast);
-      setTimeout(() => toast.remove(), 5000);
+      // Notifications disabled - no-op function
+      return;
     },
 
     updateStepStatus(step, status) {
@@ -1562,7 +1475,8 @@
     
     const entry = {
       id: Date.now().toString(),
-      timestamp: new Date().toLocaleString(),
+      timestamp: new Date().toISOString(),
+      letoff: AppState.selectedLetoff || 'N/A',
       materialName: AppState.selectedMaterial ? AppState.selectedMaterial.name : 'Unknown',
       expectedBarcode: AppState.selectedMaterial ? AppState.selectedMaterial.barcode : '',
       scannedBarcode: AppState.scannedBarcode || '',
@@ -2298,7 +2212,8 @@
         if (!WorkflowManager.isWorkflowComplete()) {
           const entry = {
             id: Date.now().toString(),
-            timestamp: new Date().toLocaleString(),
+            timestamp: new Date().toISOString(),
+            letoff: AppState.selectedLetoff || 'N/A',
             materialName: AppState.selectedMaterial ? AppState.selectedMaterial.name : '',
             expectedBarcode: AppState.selectedMaterial ? AppState.selectedMaterial.barcode : '',
             scannedBarcode: AppState.scannedBarcode || '',
@@ -2617,6 +2532,52 @@
     }, 1500);
   };
 
+  // LETOFF Selection Setup
+  function setupLetoffSelection() {
+    const letoffOptions = document.querySelectorAll('input[name="letoff"]');
+    const letoffStatus = document.getElementById('letoff-status');
+    
+    letoffOptions.forEach(option => {
+      option.addEventListener('change', function() {
+        if (this.checked) {
+          AppState.selectedLetoff = this.value;
+          
+          // Update status display
+          if (letoffStatus) {
+            letoffStatus.classList.add('selected');
+            letoffStatus.innerHTML = `
+              <i class="fas fa-check-circle"></i>
+              <span>LETOFF ${this.value} selected - You can now proceed with material selection</span>
+            `;
+          }
+          
+          // Update localStorage for persistence
+          localStorage.setItem('drbs_selected_letoff', this.value);
+          
+          console.log(`LETOFF ${this.value} selected`);
+        }
+      });
+    });
+    
+    // Restore previous selection if exists
+    const savedLetoff = localStorage.getItem('drbs_selected_letoff');
+    if (savedLetoff) {
+      const savedOption = document.querySelector(`input[name="letoff"][value="${savedLetoff}"]`);
+      if (savedOption) {
+        savedOption.checked = true;
+        AppState.selectedLetoff = savedLetoff;
+        
+        if (letoffStatus) {
+          letoffStatus.classList.add('selected');
+          letoffStatus.innerHTML = `
+            <i class="fas fa-check-circle"></i>
+            <span>LETOFF ${savedLetoff} selected - You can now proceed with material selection</span>
+          `;
+        }
+      }
+    }
+  }
+
   // Initialize application
   document.addEventListener('DOMContentLoaded', async function() {
     // Initialize system with loading screen
@@ -2636,6 +2597,7 @@
     
     // Setup event handlers
     handleBarcodeInput();
+    setupLetoffSelection();
     
     // Start timers
     setInterval(updateCurrentTime, 1000);
@@ -2736,14 +2698,6 @@
     } else if (section === 'vendors') {
       loadVendorsTable();
     } else if (section === 'system') {
-      // Check if notification panel should be visible
-      const notificationPanel = document.getElementById('notification-panel');
-      const panelDismissed = localStorage.getItem('drbs_notification_panel_dismissed');
-      
-      if (notificationPanel && panelDismissed !== 'true') {
-        notificationPanel.style.display = 'block';
-      }
-      
       // Update system stats if the elements still exist
       updateSystemStats();
     } else if (section === 'settings') {
@@ -3400,7 +3354,7 @@
       // Start automatic scanning
       startMaterialScanning();
       
-      UIManager.showToast(`Material selected: ${AppState.selectedMaterial.name}`, 'success');
+      console.log(`Material selected: ${AppState.selectedMaterial.name}`, 'success');
     }
   };
 
@@ -3443,7 +3397,7 @@
             </div>
           </div>`;
       }
-      UIManager.showToast(`Vendor selected: ${AppState.selectedVendor.name}`, 'success');
+      console.log(`Vendor selected: ${AppState.selectedVendor.name}`, 'success');
     }
   };
 
